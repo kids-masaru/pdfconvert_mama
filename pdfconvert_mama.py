@@ -8,6 +8,7 @@ import os
 from typing import List, Dict, Any
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet # Worksheetのインポートを追加
+# from copy import copy # 書式コピー用のimport (現在はコメントアウト)
 
 # ----------------------------
 # ページ設定（アイコン指定：ブラウザタブ・ブックマーク用）
@@ -274,7 +275,7 @@ st.markdown('<div class="title">【数出表】PDF → Excelへの変換＆コ�
 st.markdown('<div class="subtitle">PDFの数出表をExcelに変換し、指定シートの値を別ファイルにコピーします。</div>', unsafe_allow_html=True)
 
 # ----------------------------
-# PDF→Excel変換用の関数群（変更なし）
+# PDF→Excel変換用の関数群
 # ----------------------------
 def is_number(text: str) -> bool:
     """文字列が数値かどうかを判定する"""
@@ -378,12 +379,14 @@ def extract_text_with_layout(page) -> List[List[str]]:
     # Use slightly more generous tolerances for word extraction
     words = page.extract_words(x_tolerance=3, y_tolerance=3, keep_blank_chars=True)
     if not words:
-        st.warning("ページから単語が抽出されませんでした。")
+        # st.warning("ページから単語が抽出されませんでした。") # Changed to debug log
+        # print("DEBUG: No words extracted from page.")
         return []
 
     boundaries = get_vertical_boundaries(page)
     if not boundaries or len(boundaries) < 2:
-         st.warning("表の縦境界線を検出できませんでした。レイアウトが崩れる可能性があります。")
+         # st.warning("表の縦境界線を検出できませんでした。レイアウトが崩れる可能性があります。") # Changed to debug log
+         # print("DEBUG: Could not detect vertical boundaries reliably.")
          # Fallback: treat the whole line as one cell
          boundaries = [page.bbox[0], page.bbox[2]]
 
@@ -395,7 +398,7 @@ def extract_text_with_layout(page) -> List[List[str]]:
         # Words within a group are already sorted by x0 in get_line_groups
         columns = split_line_using_boundaries(group, boundaries)
         # Only add rows that contain some non-empty cell
-        if any(cell.strip() for cell in columns):
+        if any(str(cell).strip() for cell in columns if cell is not None): # Check for None
              result_rows.append(columns)
 
     return result_rows
@@ -407,7 +410,9 @@ def remove_extra_empty_columns(rows: List[List[str]]) -> List[List[str]]:
 
     max_cols = 0
     for row in rows:
-        max_cols = max(max_cols, len(row))
+        # Ensure row is not None and is iterable
+        if row:
+             max_cols = max(max_cols, len(row))
 
     if max_cols == 0:
         return rows
@@ -415,56 +420,109 @@ def remove_extra_empty_columns(rows: List[List[str]]) -> List[List[str]]:
     # Pad rows to have the same number of columns before checking
     padded_rows = []
     for row in rows:
-        padded_rows.append(row + [''] * (max_cols - len(row)))
+        if row: # Ensure row is not None
+            padded_rows.append(row + [''] * (max_cols - len(row)))
+        else:
+            padded_rows.append([''] * max_cols) # Add empty row if original was None
 
     keep_indices = []
     for col_idx in range(max_cols):
-        # Check if any cell in this column index has content
-        if any(padded_rows[row_idx][col_idx].strip() for row_idx in range(len(padded_rows))):
+        # Check if any cell in this column index has content (and is not None)
+        if any(str(padded_rows[row_idx][col_idx]).strip() for row_idx in range(len(padded_rows)) if padded_rows[row_idx][col_idx] is not None):
             keep_indices.append(col_idx)
 
     # Create new rows with only the columns to keep
     new_rows = []
     for row in padded_rows:
-        new_row = [row[i] for i in keep_indices]
-        new_rows.append(new_row)
+         # Ensure row is indexable and create new row safely
+         new_row = [row[i] for i in keep_indices if i < len(row)]
+         new_rows.append(new_row)
+
+
+    # Remove trailing empty rows if any were created
+    while new_rows and not any(str(cell).strip() for cell in new_rows[-1] if cell is not None):
+        new_rows.pop()
+
 
     return new_rows
 
 
-def format_excel_worksheet(worksheet):
+def format_excel_worksheet(worksheet: Worksheet):
      """Excelワークシートの書式設定（列幅・行高さ） - openpyxl用"""
-     for col in worksheet.columns:
-         max_length = 0
-         column = col[0].column_letter # Get the column name
-         for cell in col:
-             try: # Necessary to avoid error on empty cells
-                 if len(str(cell.value)) > max_length:
-                     max_length = len(str(cell.value))
-             except:
-                 pass
-         adjusted_width = (max_length + 2) * 1.2 # Adjust multiplier as needed
-         worksheet.column_dimensions[column].width = min(adjusted_width, 50) # Max width 50
+     if not isinstance(worksheet, Worksheet):
+         print(f"DEBUG: Invalid worksheet passed to format_excel_worksheet: {type(worksheet)}")
+         return # Exit if not a valid worksheet
 
+     for col_cells in worksheet.columns:
+         max_length = 0
+         # Check if col_cells is not empty and contains cells
+         if not col_cells or not hasattr(col_cells[0], 'column_letter'):
+             continue # Skip if column is empty or invalid
+
+         column = col_cells[0].column_letter # Get the column name
+
+         for cell in col_cells:
+             try: # Necessary to avoid error on empty or invalid cells
+                 if cell and cell.value is not None: # Check if cell and value exist
+                     value_str = str(cell.value)
+                     # Consider line breaks for length calculation
+                     cell_len = max(len(line) for line in value_str.split('\n'))
+                     if cell_len > max_length:
+                         max_length = cell_len
+             except Exception as e:
+                 # print(f"DEBUG: Error processing cell {cell.coordinate} for width: {e}")
+                 pass # Ignore errors for individual cells
+
+         # Set a minimum width and calculate adjusted width
+         adjusted_width = max(10, (max_length + 2) * 1.2) # Min width 10
+         worksheet.column_dimensions[column].width = min(adjusted_width, 60) # Max width 60
+
+     for row_dim in worksheet.row_dimensions.values():
+         # Reset height first or use a default
+         row_dim.height = 15 # Default height
+
+     # Iterate again to set height based on content
      for row in worksheet.iter_rows():
-        max_height = 15 # Default height
-        for cell in row:
-            if cell.value:
-                # Estimate height based on newlines, adjust as needed
-                lines = str(cell.value).count('\n') + 1
-                max_height = max(max_height, lines * 15) # Approx 15 points per line
-        worksheet.row_dimensions[cell.row].height = min(max_height, 100) # Max height 100
+          max_height = 15 # Default height for the row
+          # Check if row is not empty
+          if not row or not hasattr(row[0], 'row'):
+              continue
+
+          row_idx = row[0].row # Get row index from the first cell
+
+          for cell in row:
+              if cell and cell.value:
+                  try:
+                      # Estimate height based on newlines, adjust as needed
+                      lines = str(cell.value).count('\n') + 1
+                      # Rough estimate: 15 points per line, add some padding
+                      estimated_height = lines * 15 + (5 if lines > 1 else 0)
+                      max_height = max(max_height, estimated_height)
+                  except Exception as e:
+                      # print(f"DEBUG: Error processing cell {cell.coordinate} for height: {e}")
+                      pass
+
+          # Apply calculated max height for the row, with a maximum limit
+          worksheet.row_dimensions[row_idx].height = min(max_height, 150) # Max height 150
 
 
 def post_process_rows(rows: List[List[str]]) -> List[List[str]]:
     """『合計』を含むセルの直上セルを空白にする処理"""
-    # Create a copy to avoid modifying the list while iterating
-    processed_rows = [row[:] for row in rows]
+    if not rows: # Handle empty input
+        return []
+    # Create a deep copy to avoid modifying the original list structure
+    # Ensure all elements are lists before copying
+    processed_rows = [list(row) if isinstance(row, (list, tuple)) else [] for row in rows]
+
     for i, row in enumerate(processed_rows):
+        # Ensure row is a list and not empty
+        if not isinstance(row, list) or not row:
+            continue
         for j, cell in enumerate(row):
             # Check if '合計' is present and it's not the first row
-            # Also ensure the cell above exists
-            if "合計" in str(cell) and i > 0 and j < len(processed_rows[i-1]):
+            # Also ensure the cell above exists and the row above is valid
+            if "合計" in str(cell) and i > 0 and \
+               isinstance(processed_rows[i-1], list) and j < len(processed_rows[i-1]):
                  processed_rows[i-1][j] = "" # Clear the cell directly above
     return processed_rows
 
@@ -478,43 +536,57 @@ def pdf_data_to_dataframe(pdf_file) -> pd.DataFrame | None:
                 st.error("PDFファイルにページが含まれていません。")
                 return None
             page = pdf.pages[0] # Process only the first page
+
+            # Attempt layout extraction first
             rows = extract_text_with_layout(page)
+
+            # Fallback to table extraction if layout fails or returns empty
             if not rows:
-                 st.warning("PDFの1ページ目からデータを抽出できませんでした。")
-                 # Try extracting tables directly as a fallback
+                 st.warning("レイアウト解析でデータを抽出できませんでした。テーブル抽出を試みます。")
                  tables = page.extract_tables()
                  if tables:
-                     st.info("テーブル抽出を試みます。")
+                     st.info("テーブル抽出成功。")
                      # Assuming the first table is the main one
-                     rows = tables[0]
+                     # Clean table data: replace None with empty strings
+                     rows = [[str(cell) if cell is not None else "" for cell in row] for row in tables[0]]
                  else:
-                     st.error("テーブルも抽出できませんでした。")
+                     st.error("テーブル抽出も失敗しました。")
                      return None
 
-            # Post-processing and cleaning
-            rows = [row for row in rows if any(str(cell).strip() for cell in row)] # Remove fully empty rows
+            # Post-processing and cleaning (applied to both layout and table data)
+            rows = [row for row in rows if any(str(cell).strip() for cell in row if cell is not None)] # Remove fully empty rows
             if not rows:
                  st.error("有効なデータ行が見つかりませんでした。")
                  return None
 
             rows = post_process_rows(rows)
-            rows = remove_extra_empty_columns(rows)
+            rows = remove_extra_empty_columns(rows) # Crucial step after post_process
 
             if not rows:
                  st.error("クリーンアップ後、データが空になりました。")
                  return None
 
-            # Find max columns again after cleaning
-            max_cols = max(len(row) for row in rows) if rows else 0
+            # Find max columns again after all cleaning
+            max_cols = max(len(row) for row in rows if row) if rows else 0
+            if max_cols == 0:
+                 st.error("最終的なデータ列数が0です。")
+                 return None
+
             # Normalize rows to have the same number of columns for DataFrame creation
-            normalized_rows = [(row + [None] * (max_cols - len(row))) if len(row) < max_cols else row for row in rows]
+            normalized_rows = []
+            for row in rows:
+                 if row: # Ensure row is not None or empty
+                     normalized_rows.append((row + [None] * (max_cols - len(row))) if len(row) < max_cols else row[:max_cols]) # Ensure correct length
+                 else:
+                     normalized_rows.append([None] * max_cols) # Add empty row placeholder
+
 
             # Create DataFrame without header
             df = pd.DataFrame(normalized_rows)
             return df
 
     except Exception as e:
-        st.error(f"PDF処理中にエラーが発生しました: {e}")
+        st.error(f"PDF処理中に予期せぬエラーが発生しました: {e}")
         # Log the full traceback for debugging if needed
         import traceback
         st.error(traceback.format_exc())
@@ -528,30 +600,40 @@ def copy_sheet_values(source_ws: Worksheet, target_ws: Worksheet):
     """
     source_ws のセルの値（数式ではなく結果）を target_ws にコピーする。
     target_ws の既存の内容はクリアされる。
+    書式はコピーしない。列幅/行高さは別途調整。
     """
-    # ターゲットシートをクリア（ヘッダー行なども考慮する場合は調整が必要）
-    target_ws.delete_rows(1, target_ws.max_row + 1) # Clear all existing rows
+    if not isinstance(source_ws, Worksheet) or not isinstance(target_ws, Worksheet):
+        st.error("コピー元またはコピー先のシートが無効です。")
+        return
+
+    # ターゲットシートをクリア
+    # iter_rows(max_row=...) can be unreliable if rows were deleted without updating max_row
+    # Safest is to delete all rows
+    try:
+         if target_ws.max_row > 0: # Check if there are rows to delete
+             target_ws.delete_rows(1, target_ws.max_row + 1) # Clear all existing rows
+    except Exception as e:
+         st.warning(f"ターゲットシート '{target_ws.title}' のクリア中にエラー: {e}. 処理を続行します。")
+
 
     # ソースシートから値をコピー
-    for r_idx, row in enumerate(source_ws.iter_rows(), 1):
-        for c_idx, cell in enumerate(row, 1):
-            # value属性を使って値のみを取得
-            target_ws.cell(row=r_idx, column=c_idx, value=cell.value)
+    try:
+        for r_idx, row in enumerate(source_ws.iter_rows(), 1):
+            for c_idx, cell in enumerate(row, 1):
+                # value属性を使って値のみを取得
+                 target_ws.cell(row=r_idx, column=c_idx, value=cell.value)
+    except Exception as e:
+         st.error(f"シート '{source_ws.title}' から '{target_ws.title}' へのコピー中にエラー: {e}")
+         import traceback
+         st.error(traceback.format_exc())
+         raise # Re-raise the exception to stop the process if copy fails critically
 
-    # オプション：書式設定もコピーする場合（ただし、複雑な書式は完全には再現されない可能性あり）
-    # for r_idx, row in enumerate(source_ws.iter_rows(), 1):
-    #     for c_idx, cell in enumerate(row, 1):
-    #         target_cell = target_ws.cell(row=r_idx, column=c_idx, value=cell.value)
-    #         if cell.has_style:
-    #             target_cell.font = copy(cell.font)
-    #             target_cell.border = copy(cell.border)
-    #             target_cell.fill = copy(cell.fill)
-    #             target_cell.number_format = cell.number_format
-    #             target_cell.protection = copy(cell.protection)
-    #             target_cell.alignment = copy(cell.alignment)
 
     # 列幅と行高さを調整 (コピー後に実行)
-    format_excel_worksheet(target_ws)
+    try:
+        format_excel_worksheet(target_ws)
+    except Exception as e:
+         st.warning(f"シート '{target_ws.title}' のフォーマット中にエラー: {e}")
 
 
 # ----------------------------
@@ -567,7 +649,8 @@ if not os.path.exists(template_path):
     error_messages.append(f"テンプレートファイル '{template_path}' が見つかりません。")
 else:
     try:
-        template_wb = load_workbook(template_path)
+        # data_only=True で数式の代わりに値を読み込む (ただし、template側で必要ならFalse)
+        template_wb = load_workbook(template_path, data_only=False)
     except Exception as e:
         error_messages.append(f"テンプレートファイル '{template_path}' の読み込みに失敗しました: {e}")
 
@@ -597,7 +680,9 @@ processed = False # 処理状態フラグ
 if uploaded_pdf and template_wb and release_wb: # 両方のWorkbookが正常に読み込めた場合のみ実行
     file_ext = uploaded_pdf.name.split('.')[-1].lower()
     file_icon = "PDF" if file_ext == "pdf" else file_ext.upper()
-    file_size = len(uploaded_pdf.getvalue()) / 1024 # KB単位
+    # Ensure getvalue() returns bytes before calculating size
+    pdf_bytes = uploaded_pdf.getvalue()
+    file_size = len(pdf_bytes) / 1024 if pdf_bytes else 0 # KB単位
 
     # --- ファイル情報表示（処理中）---
     progress_placeholder = st.empty() # プレースホルダーを作成
@@ -622,29 +707,44 @@ if uploaded_pdf and template_wb and release_wb: # 両方のWorkbookが正常に�
         try:
             # 1. PDFからDataFrameへ変換
             st.write("ステップ1/3: PDFからデータを抽出中...")
-            df_pdf = pdf_data_to_dataframe(uploaded_pdf)
+            # Pass the bytes directly to the function
+            df_pdf = pdf_data_to_dataframe(io.BytesIO(pdf_bytes))
 
             if df_pdf is not None and not df_pdf.empty:
                 # 2. DataFrameをtemplate.xlsxの1シート目に書き込み
                 st.write("ステップ2/3: テンプレートファイルにデータを書き込み中...")
                 try:
+                    if not template_wb.worksheets:
+                         st.error(f"'{template_path}' にシートが存在しません。")
+                         st.stop()
+
                     template_ws_target = template_wb.worksheets[0] # 最初のシートを取得
-                    # 既存の内容をクリア（オプション）
-                    template_ws_target.delete_rows(1, template_ws_target.max_row + 1)
+
+                    # 既存の内容をクリア（オプション） - より安全な方法
+                    if template_ws_target.max_row > 0:
+                        template_ws_target.delete_rows(1, template_ws_target.max_row + 1)
+
                     # DataFrameを書き込み (ヘッダーなし、インデックスなし)
                     for r_idx, row in enumerate(df_pdf.values):
                         for c_idx, value in enumerate(row):
                              # NaN値をNoneに変換 (openpyxlはNaNを扱えないため)
                              if pd.isna(value):
                                  value = None
+                             # Ensure value is suitable for Excel cell
+                             if isinstance(value, (list, tuple, dict)):
+                                 value = str(value) # Convert complex types to string
                              template_ws_target.cell(row=r_idx + 1, column=c_idx + 1, value=value)
+
                     format_excel_worksheet(template_ws_target) # 書式設定
 
                 except IndexError:
-                    st.error(f"'{template_path}' にシートが存在しません。")
+                    # This should be caught by the check above, but keep as safeguard
+                    st.error(f"'{template_path}' に最初のシートが見つかりません。")
                     st.stop()
                 except Exception as e:
                     st.error(f"テンプレートへの書き込み中にエラーが発生しました: {e}")
+                    import traceback
+                    st.error(traceback.format_exc())
                     st.stop()
 
 
@@ -657,57 +757,63 @@ if uploaded_pdf and template_wb and release_wb: # 両方のWorkbookが正常に�
                 target_sheet_index_2 = 1                      # releaseの2シート目
 
                 copy_successful = True # コピー成功フラグ
+                source_ws1 = None
+                source_ws2 = None
 
-                # コピー処理1
-                try:
-                    if source_sheet_name_1 in template_wb.sheetnames:
-                        source_ws1 = template_wb[source_sheet_name_1]
+                # --- Find Source Sheet 1 ---
+                if source_sheet_name_1 in template_wb.sheetnames:
+                    source_ws1 = template_wb[source_sheet_name_1]
+                elif len(template_wb.worksheets) > 2:
+                     source_ws1 = template_wb.worksheets[2] # Index 2 is the 3rd sheet
+                     st.warning(f"シート名 '{source_sheet_name_1}' が見つかりません。3番目のシートを使用します。")
+                else:
+                     st.error(f"シート '{source_sheet_name_1}' も3番目のシートも '{template_path}' に存在しません。")
+                     copy_successful = False
+
+                # --- Find Source Sheet 2 ---
+                if copy_successful: # Only proceed if Sheet 1 was found
+                    if source_sheet_name_2 in template_wb.sheetnames:
+                        source_ws2 = template_wb[source_sheet_name_2]
+                    elif len(template_wb.worksheets) > 3:
+                        source_ws2 = template_wb.worksheets[3] # Index 3 is the 4th sheet
+                        st.warning(f"シート名 '{source_sheet_name_2}' が見つかりません。4番目のシートを使用します。")
                     else:
-                         # フォールバックとして3番目のシート（インデックス2）を試す
-                         if len(template_wb.worksheets) > 2:
-                             source_ws1 = template_wb.worksheets[2]
-                             st.warning(f"シート名 '{source_sheet_name_1}' が見つかりません。3番目のシートを使用します。")
-                         else:
-                             st.error(f"シート '{source_sheet_name_1}' も3番目のシートも '{template_path}' に存在しません。")
-                             copy_successful = False
+                        st.error(f"シート '{source_sheet_name_2}' も4番目のシートも '{template_path}' に存在しません。")
+                        copy_successful = False
 
 
-                    if copy_successful and len(release_wb.worksheets) > target_sheet_index_1:
+                # --- Find Target Sheets & Perform Copy ---
+                target_ws1 = None
+                target_ws2 = None
+
+                if copy_successful:
+                    if len(release_wb.worksheets) > target_sheet_index_1:
                         target_ws1 = release_wb.worksheets[target_sheet_index_1]
-                        copy_sheet_values(source_ws1, target_ws1)
-                    elif copy_successful:
-                         st.error(f"'{release_path}' に {target_sheet_index_1 + 1}番目のシートが存在しません。")
+                    else:
+                        st.error(f"'{release_path}' に {target_sheet_index_1 + 1}番目のシートが存在しません。")
+                        copy_successful = False
+
+                if copy_successful:
+                     if len(release_wb.worksheets) > target_sheet_index_2:
+                         target_ws2 = release_wb.worksheets[target_sheet_index_2]
+                     else:
+                         st.error(f"'{release_path}' に {target_sheet_index_2 + 1}番目のシートが存在しません。")
                          copy_successful = False
 
-                except Exception as e:
-                    st.error(f"シート '{source_sheet_name_1}' からのコピー中にエラーが発生しました: {e}")
-                    copy_successful = False
-
-                # コピー処理2 (処理1が成功した場合のみ実行)
-                if copy_successful:
+                # --- Execute Copying ---
+                if copy_successful and source_ws1 and target_ws1:
                     try:
-                        if source_sheet_name_2 in template_wb.sheetnames:
-                            source_ws2 = template_wb[source_sheet_name_2]
-                        else:
-                            # フォールバックとして4番目のシート（インデックス3）を試す
-                            if len(template_wb.worksheets) > 3:
-                                source_ws2 = template_wb.worksheets[3]
-                                st.warning(f"シート名 '{source_sheet_name_2}' が見つかりません。4番目のシートを使用します。")
-                            else:
-                                st.error(f"シート '{source_sheet_name_2}' も4番目のシートも '{template_path}' に存在しません。")
-                                copy_successful = False
-
-
-                        if copy_successful and len(release_wb.worksheets) > target_sheet_index_2:
-                            target_ws2 = release_wb.worksheets[target_sheet_index_2]
-                            copy_sheet_values(source_ws2, target_ws2)
-                        elif copy_successful:
-                            st.error(f"'{release_path}' に {target_sheet_index_2 + 1}番目のシートが存在しません。")
-                            copy_successful = False
-
+                        copy_sheet_values(source_ws1, target_ws1)
                     except Exception as e:
-                        st.error(f"シート '{source_sheet_name_2}' からのコピー中にエラーが発生しました: {e}")
+                        st.error(f"シート '{source_ws1.title}' から '{target_ws1.title}' へのコピー中にエラー: {e}")
                         copy_successful = False
+
+                if copy_successful and source_ws2 and target_ws2:
+                     try:
+                         copy_sheet_values(source_ws2, target_ws2)
+                     except Exception as e:
+                         st.error(f"シート '{source_ws2.title}' から '{target_ws2.title}' へのコピー中にエラー: {e}")
+                         copy_successful = False
 
 
                 # 4. 最終的なrelease.xlsxをバイトデータとして保存
@@ -722,7 +828,8 @@ if uploaded_pdf and template_wb and release_wb: # 両方のWorkbookが正常に�
                         st.error(f"最終Excelファイルの保存中にエラーが発生しました: {e}")
                         processed = False # エラー発生
                 else:
-                     processed = False # コピー失敗
+                     # Ensure processed is False if copy failed at any point
+                     processed = False
 
             else:
                 # PDFからのデータ抽出失敗
@@ -736,35 +843,37 @@ if uploaded_pdf and template_wb and release_wb: # 両方のWorkbookが正常に�
             processed = False
 
     # --- ファイル情報表示（処理完了 or エラー）---
-    if processed:
-        # 成功時の表示
-        progress_placeholder.markdown(f"""
-        <div class="file-card">
-            <div class="file-info">
-                <div class="file-icon">{file_icon}</div>
-                <div class="file-details">
-                    <div class="file-name">{uploaded_pdf.name}</div>
-                    <div class="file-meta">{file_size:.0f} KB - 処理完了</div>
+    # Make sure progress_placeholder exists before updating
+    if 'progress_placeholder' in locals():
+        if processed:
+            # 成功時の表示
+            progress_placeholder.markdown(f"""
+            <div class="file-card">
+                <div class="file-info">
+                    <div class="file-icon">{file_icon}</div>
+                    <div class="file-details">
+                        <div class="file-name">{uploaded_pdf.name}</div>
+                        <div class="file-meta">{file_size:.0f} KB - 処理完了</div>
+                    </div>
                 </div>
+                <div class="check-icon">✓</div>
             </div>
-            <div class="check-icon">✓</div>
-        </div>
-         <div class="progress-bar"><div class="progress-value done"></div></div>
-        """, unsafe_allow_html=True)
-    else:
-        # 失敗時の表示
-         progress_placeholder.markdown(f"""
-         <div class="file-card" style="border-color: #f44336;">
-             <div class="file-info">
-                 <div class="file-icon">{file_icon}</div>
-                 <div class="file-details">
-                     <div class="file-name">{uploaded_pdf.name}</div>
-                     <div class="file-meta">{file_size:.0f} KB - <span style="color: #f44336; font-weight: bold;">処理失敗</span></div>
+             <div class="progress-bar"><div class="progress-value done"></div></div>
+            """, unsafe_allow_html=True)
+        else:
+            # 失敗時の表示
+             progress_placeholder.markdown(f"""
+             <div class="file-card" style="border-color: #f44336;">
+                 <div class="file-info">
+                     <div class="file-icon">{file_icon}</div>
+                     <div class="file-details">
+                         <div class="file-name">{uploaded_pdf.name}</div>
+                         <div class="file-meta">{file_size:.0f} KB - <span style="color: #f44336; font-weight: bold;">処理失敗</span></div>
+                     </div>
                  </div>
+                 <div style="color: #f44336; font-size: 20px; font-weight: bold;">✕</div>
              </div>
-             <div style="color: #f44336; font-size: 20px; font-weight: bold;">✕</div>
-         </div>
-         """, unsafe_allow_html=True)
+             """, unsafe_allow_html=True)
     # --- ここまで ---
 
 
@@ -780,11 +889,11 @@ if uploaded_pdf and template_wb and release_wb: # 両方のWorkbookが正常に�
         excel_size = len(final_excel_bytes) / 1024 # KB単位
         b64 = base64.b64encode(final_excel_bytes).decode('utf-8')
 
-        # ダウンロードリンクのHTML (クラス名を修正)
+        # ダウンロードリンクのHTML (クラス名を修正、コメント削除)
         href = f"""
         <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{output_filename}" class="download-card">
             <div class="download-info">
-                <div class="excel-icon">XLSX</div> {/* Changed class */}
+                <div class="excel-icon">XLSX</div>
                 <div class="download-details">
                     <div class="download-name">{output_filename}</div>
                     <div class="download-meta">変換済みExcel・{excel_size:.0f} KB</div>
@@ -797,9 +906,8 @@ if uploaded_pdf and template_wb and release_wb: # 両方のWorkbookが正常に�
         </a>
         """
         st.markdown(href, unsafe_allow_html=True)
-    elif not processed and uploaded_pdf:
-         # エラーメッセージはスピナー内や progress_placeholder で表示済みなので、ここでは追加しない
-         st.warning("処理中にエラーが発生したため、ファイルをダウンロードできません。")
+    # elif not processed and uploaded_pdf: # Redundant check, error shown above
+    #      st.warning("処理中にエラーが発生したため、ファイルをダウンロードできません。")
 
 
 # メインコンテナ終了
