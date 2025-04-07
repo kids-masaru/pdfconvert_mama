@@ -475,14 +475,11 @@ if not os.path.exists(template_path):
     st.error(f"テンプレートファイル '{template_path}' が見つかりません。スクリプトと同じ場所に配置してください。")
     st.stop() # テンプレートがない場合は処理を停止
 else:
-    # テンプレートファイルの読み込みを試みる (アプリ起動時に一度だけ行う方が効率的)
-    # ただし、ファイルがロックされている等の可能性があるため、ここではパスの存在確認のみとし、
-    # 実際の読み込みはファイルアップロード後に行う方が安全かもしれない。
-    # 今回はシンプルにここで読み込む。
+    # テンプレートファイルの読み込みを試みる
     try:
         # マクロを保持して読み込む
         template_wb = load_workbook(template_path, keep_vba=True)
-        st.success(f"テンプレートファイル '{template_path}' を読み込みました。")
+        # --- st.success(...) の行を削除 ---
     except Exception as e:
         st.error(f"テンプレートファイル '{template_path}' の読み込み中にエラーが発生しました: {e}")
         template_wb = None # エラー時は None に設定
@@ -560,76 +557,4 @@ if uploaded_pdf is not None and template_wb is not None:
                              <div class="file-meta">{file_size:.0f} KB - 処理完了</div>
                          </div>
                      </div>
-                     <div class="check-icon">✓</div>
-                 </div>
-                 """, unsafe_allow_html=True)
-
-            # --- ダウンロードリンクの生成 ---
-            with download_container:
-                st.markdown('<div class="separator"></div>', unsafe_allow_html=True) # 区切り線
-
-                original_pdf_name = os.path.splitext(uploaded_pdf.name)[0]
-                # 出力ファイル名を .xlsm に
-                output_filename = f"{original_pdf_name}_Merged.xlsm"
-                excel_size = len(final_excel_bytes) / 1024  # KB単位
-                b64 = base64.b64encode(final_excel_bytes).decode('utf-8')
-
-                # MIMEタイプを .xlsm 用に設定
-                mime_type = "application/vnd.ms-excel.sheet.macroEnabled.12"
-
-                # ダウンロードリンク (HTMLコメント削除済み)
-                href = f"""
-                <a href="data:{mime_type};base64,{b64}" download="{output_filename}" class="download-card">
-                    <div class="download-info">
-                        <div class="download-icon">XLSM</div>
-                        <div class="download-details">
-                            <div class="download-name">{output_filename}</div>
-                            <div class="download-meta">Excel (マクロ有効)・{excel_size:.0f} KB</div>
-                        </div>
-                    </div>
-                    <div class="download-button-imitation">
-                        <span class="download-button-icon">↓</span>
-                        Download
-                    </div>
-                </a>
-                """
-                st.markdown(href, unsafe_allow_html=True)
-
-        except Exception as e:
-            st.error(f"Excelファイルへの書き込みまたは生成中にエラーが発生しました: {e}")
-            # エラー発生時は完了表示を元に戻すか、エラー表示を維持
-            with file_container:
-                 progress_placeholder.markdown(f"""
-                 <div class="file-card" style="border-color: red;">
-                     <div class="file-info">
-                         <div class="file-icon" style="background-color: red;">!</div>
-                         <div class="file-details">
-                             <div class="file-name">{uploaded_pdf.name}</div>
-                             <div class="file-meta" style="color: red;">処理中にエラーが発生しました</div>
-                         </div>
-                     </div>
-                 </div>
-                 """, unsafe_allow_html=True)
-
-    elif df_pdf is None:
-        # pdf_to_excel_data 関数内でエラーまたは警告が出力されているはず
-        with file_container:
-             progress_placeholder.markdown(f"""
-             <div class="file-card" style="border-color: orange;">
-                 <div class="file-info">
-                     <div class="file-icon" style="background-color: orange;">!</div>
-                     <div class="file-details">
-                         <div class="file-name">{uploaded_pdf.name}</div>
-                         <div class="file-meta" style="color: orange;">PDFからデータを抽出できませんでした</div>
-                     </div>
-                 </div>
-             </div>
-             """, unsafe_allow_html=True)
-
-# --- テンプレートファイルが見つからないか読み込めなかった場合 ---
-elif uploaded_pdf is not None and template_wb is None:
-    st.warning("テンプレートファイルが正しく読み込めていないため、処理を開始できません。")
-
-
-# --- メインコンテナ終了 ---
-st.markdown('</div>', unsafe_allow_html=True)
+                     <div class
