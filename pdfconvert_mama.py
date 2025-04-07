@@ -12,7 +12,7 @@ from openpyxl import load_workbook
 # ページ設定（アイコン指定：ブラウザタブ・ブックマーク用）
 # ----------------------------
 st.set_page_config(
-    page_title="【数出表】PDF → Excelへの変換", 
+    page_title="【数出表】PDF → Excelへの変換",
     layout="centered",
     page_icon="icon.png"  # アイコンファイルのパスを指定
 )
@@ -30,7 +30,7 @@ st.markdown("""
             background: #fff5e6;
             font-family: 'Inter', sans-serif;
         }
-        
+
         /* タイトル */
         .title {
             font-size: 1.5rem;
@@ -38,14 +38,14 @@ st.markdown("""
             color: #333;
             margin-bottom: 5px;
         }
-        
+
         /* サブタイトル */
         .subtitle {
             font-size: 0.9rem;
             color: #666;
             margin-bottom: 25px;
         }
-        
+
         /* ファイルアップローダーのカスタマイズ */
         [data-testid="stFileUploader"] {
             background: #ffffff;
@@ -54,16 +54,16 @@ st.markdown("""
             padding: 30px 20px;
             margin: 20px 0;
         }
-        
+
         [data-testid="stFileUploader"] label {
             display: none;
         }
-        
+
         [data-testid="stFileUploader"] section {
             border: none !important;
             background: transparent !important;
         }
-        
+
         /* ファイル情報カード */
         .file-card {
             background: white;
@@ -76,12 +76,12 @@ st.markdown("""
             justify-content: space-between;
             border: 1px solid #eaeaea;
         }
-        
+
         .file-info {
             display: flex;
             align-items: center;
         }
-        
+
         .file-icon {
             width: 36px;
             height: 36px;
@@ -95,24 +95,24 @@ st.markdown("""
             font-weight: 500;
             font-size: 14px;
         }
-        
+
         .file-details {
             display: flex;
             flex-direction: column;
         }
-        
+
         .file-name {
             font-weight: 500;
             color: #333;
             font-size: 0.9rem;
             margin-bottom: 3px;
         }
-        
+
         .file-meta {
             font-size: 0.75rem;
             color: #888;
         }
-        
+
         /* ローディングアニメーション */
         .loading-spinner {
             width: 20px;
@@ -122,16 +122,16 @@ st.markdown("""
             border-top-color: #ff9933;
             animation: spin 1s linear infinite;
         }
-        
+
         .check-icon {
             color: #ff9933;
             font-size: 20px;
         }
-        
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        
+
         /* 進行状況バー */
         .progress-bar {
             height: 4px;
@@ -140,14 +140,14 @@ st.markdown("""
             width: 100%;
             margin-top: 10px;
         }
-        
+
         .progress-value {
             height: 100%;
             background-color: #ff9933;
             border-radius: 2px;
             width: 60%;
         }
-        
+
         /* ダウンロードカード */
         .download-card {
             background: white;
@@ -161,20 +161,20 @@ st.markdown("""
             border: 1px solid #eaeaea;
             transition: all 0.2s ease;
             cursor: pointer;
-            text-decoration: none;
+            text-decoration: none; /* 下線を削除 */
         }
-        
+
         .download-card:hover {
             box-shadow: 0 4px 12px rgba(0,0,0,0.12);
             background-color: #fffaf0;
             transform: translateY(-2px);
         }
-        
+
         .download-info {
             display: flex;
             align-items: center;
         }
-        
+
         .download-icon {
             width: 40px;
             height: 40px;
@@ -188,24 +188,24 @@ st.markdown("""
             font-weight: 500;
             font-size: 16px;
         }
-        
+
         .download-details {
             display: flex;
             flex-direction: column;
         }
-        
+
         .download-name {
             font-weight: 500;
             color: #333;
             font-size: 0.9rem;
             margin-bottom: 3px;
         }
-        
+
         .download-meta {
             font-size: 0.75rem;
             color: #888;
         }
-        
+
         .download-button {
             background-color: #ff9933;
             color: white;
@@ -219,27 +219,27 @@ st.markdown("""
             display: flex;
             align-items: center;
         }
-        
+
         .download-button:hover {
             background-color: #e68a00;
         }
-        
+
         .download-button-icon {
             margin-right: 6px;
         }
-        
+
         .stSpinner > div {
             display: none;
         }
-        
+
         .css-1544g2n {
             padding-top: 2rem;
         }
-        
+
         .css-18e3th9 {
             padding-top: 2rem;
         }
-        
+
         /* セパレーター */
         .separator {
             height: 1px;
@@ -303,7 +303,7 @@ def split_line_using_boundaries(sorted_words: List[Dict[str, Any]], boundaries: 
     for i in range(len(boundaries) - 1):
         left = boundaries[i]
         right = boundaries[i+1]
-        col_words = [word['text'] for word in sorted_words 
+        col_words = [word['text'] for word in sorted_words
                      if (word['x0'] + word['x1'])/2 >= left and (word['x0'] + word['x1'])/2 < right]
         cell_text = " ".join(col_words)
         columns.append(cell_text)
@@ -343,8 +343,16 @@ def remove_extra_empty_columns(rows: List[List[str]]) -> List[List[str]]:
 
 def format_excel_worksheet(worksheet):
     """Excelワークシートの書式設定（列幅・行高さ）"""
-    worksheet.set_column('A:Z', 20)
-    worksheet.set_default_row(20)
+    # 注意: xlsxwriter の機能なので、openpyxl でロードしたワークブックには直接適用できません。
+    # openpyxl で書式設定を行う場合は、別途 openpyxl のメソッドを使用する必要があります。
+    # この関数は pdf_to_excel 関数内で xlsxwriter を使っている部分でのみ有効です。
+    try:
+        worksheet.set_column('A:Z', 20)
+        worksheet.set_default_row(20)
+    except AttributeError:
+        # openpyxl のワークシートオブジェクトにはこれらのメソッドがないため、エラーを無視
+        pass
+
 
 def post_process_rows(rows: List[List[str]]) -> List[List[str]]:
     """『合計』を含むセルの直上セルを空白にする処理"""
@@ -359,9 +367,11 @@ def pdf_to_excel(pdf_file):
     """
     PDFを読み込み、1ページ目のデータをExcelシートとして出力する。
     ※変換後のExcelはタブ（シート）が1つになる前提です。
+    xlsxwriter を使用して一時的な Excel ファイルをメモリ上に作成します。
     """
     output = io.BytesIO()
     with pdfplumber.open(pdf_file) as pdf:
+        # 一時的なExcelファイル作成には xlsxwriter を使用
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             workbook = writer.book
             border_format = workbook.add_format({'border': 1})
@@ -378,7 +388,8 @@ def pdf_to_excel(pdf_file):
             sheet_name = "ConvertedData"
             df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
             worksheet = writer.sheets[sheet_name]
-            format_excel_worksheet(worksheet)
+            format_excel_worksheet(worksheet) # xlsxwriter の worksheet オブジェクトを渡す
+            # 罫線の適用
             for r in range(len(normalized_rows)):
                 for c in range(max_cols):
                     worksheet.write(r, c, normalized_rows[r][c], border_format)
@@ -388,18 +399,24 @@ def pdf_to_excel(pdf_file):
 # ----------------------------
 # テンプレートExcelファイルの自動読み込み
 # ----------------------------
-template_path = "template.xlsx"
+# --- 修正点 1: ファイルパスを変更 ---
+template_path = "template.xlsm"
 if not os.path.exists(template_path):
     st.error(f"テンプレートファイル '{template_path}' がサーバー上に存在しません。")
     st.stop()
 else:
-    template_wb = load_workbook(template_path)
+    try:
+        # --- 修正点 2: keep_vba=True を追加 ---
+        template_wb = load_workbook(template_path, keep_vba=True)
+    except Exception as e:
+        st.error(f"テンプレートファイル '{template_path}' の読み込み中にエラーが発生しました: {e}")
+        st.stop()
 
 # ----------------------------
 # UI：PDFファイルアップロード＆変換実行
 # ----------------------------
-uploaded_pdf = st.file_uploader("", type="pdf", 
-                              help="PDFをアップロードするとExcelに変換され、テンプレートの1シート目に貼り付けます")
+uploaded_pdf = st.file_uploader("", type="pdf",
+                                help="PDFをアップロードするとExcelに変換され、テンプレートの1シート目に貼り付けます")
 
 file_container = st.container()
 processed = False
@@ -408,7 +425,7 @@ if uploaded_pdf:
     file_ext = uploaded_pdf.name.split('.')[-1].lower()
     file_icon = "PDF" if file_ext == "pdf" else file_ext.upper()
     file_size = len(uploaded_pdf.getvalue()) / 1024  # KB単位
-    
+
     with file_container:
         if not processed:
             progress_placeholder = st.empty()
@@ -427,26 +444,35 @@ if uploaded_pdf:
                 <div class="progress-value"></div>
             </div>
             """, unsafe_allow_html=True)
-    
+
     with st.spinner("変換中..."):
         converted_excel_bytes = pdf_to_excel(uploaded_pdf)
         if converted_excel_bytes is None:
             st.error("PDFからデータを抽出できませんでした。")
             st.stop()
+        # pdf_to_excel で作成された一時Excel（メモリ上）を読み込む
         df_pdf = pd.read_excel(io.BytesIO(converted_excel_bytes), sheet_name=0, header=None)
 
+        # template.xlsm の最初のシートを取得
         template_ws = template_wb.worksheets[0]
+
+        # データをテンプレートシートに書き込む
+        # ※ 既存のデータをクリアしたい場合は、ここでクリア処理を追加します。
+        # 例: template_ws.delete_rows(1, template_ws.max_row) など
         for r_idx, row in df_pdf.iterrows():
             for c_idx, value in enumerate(row):
+                # openpyxlは1始まりのインデックス
                 template_ws.cell(row=r_idx+1, column=c_idx+1, value=value)
 
+        # 変更をメモリ上の BytesIO オブジェクトに保存
         output = io.BytesIO()
+        # --- template_wb は keep_vba=True でロードされているため、マクロは保持される ---
         template_wb.save(output)
         output.seek(0)
         final_excel_bytes = output.read()
-        
+
         processed = True
-    
+
     with file_container:
         if processed:
             progress_placeholder.markdown(f"""
@@ -465,17 +491,20 @@ if uploaded_pdf:
     st.markdown('<div class="separator"></div>', unsafe_allow_html=True)
 
     original_pdf_name = os.path.splitext(uploaded_pdf.name)[0]
-    output_filename = f"{original_pdf_name}_Merged.xlsx"
+    # --- 修正点 3: 出力ファイル名を .xlsm に変更 ---
+    output_filename = f"{original_pdf_name}_Merged.xlsm"
     excel_size = len(final_excel_bytes) / 1024  # KB単位
     b64 = base64.b64encode(final_excel_bytes).decode('utf-8')
-    
+
+    # --- 修正点 4: MIMEタイプを .xlsm 用に変更 ---
+    mime_type = "application/vnd.ms-excel.sheet.macroEnabled.12"
     href = f"""
-    <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{output_filename}" class="download-card">
+    <a href="data:{mime_type};base64,{b64}" download="{output_filename}" class="download-card">
         <div class="download-info">
-            <div class="download-icon">XLS</div>
+            <div class="download-icon">XLSM</div> {/* アイコンも変更 */}
             <div class="download-details">
                 <div class="download-name">{output_filename}</div>
-                <div class="download-meta">Excel・{excel_size:.0f} KB</div>
+                <div class="download-meta">Excel (マクロ有効)・{excel_size:.0f} KB</div> {/* メタ情報も変更 */}
             </div>
         </div>
         <button class="download-button">
