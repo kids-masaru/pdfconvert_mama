@@ -157,6 +157,13 @@ def split_line_using_boundaries(sorted_words_in_line: List[Dict[str, Any]], boun
                 break # 次の単語へ
     # 各セルの末尾の余分なスペースを削除
     return [col.strip() for col in columns]
+                if left <= word_center_x < right:
+                if columns[i]:
+                    columns[i] += " " + word["text"]
+                else:
+                    columns[i] = word["text"]
+                break
+    return columns
 
 def extract_text_with_layout(page) -> List[List[str]]:
     """PDFページからレイアウトを考慮してテキストを行と列に抽出する"""
