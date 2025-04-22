@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pdfplumber
 import pandas as pd
 import io
@@ -6,267 +7,83 @@ import re
 import base64
 import os
 from typing import List, Dict, Any
-from openpyxl import load_workbook # .xlsm 読み書きのため
+from openpyxl import load_workbook  # .xlsm 読み書きのため
 
-# ----------------------------
-# ページ設定（アイコン指定：ブラウザタブ・ブックマーク用）
-# ----------------------------
-# icon.ico をページアイコンとして使用
-st.set_page_config(
-    page_title="【数出表】PDF → Excelへの変換",
-    layout="centered",
-    # ↓↓↓↓↓ この行の "icon.ico" の直後の特殊な空白を削除しました ↓↓↓↓↓
-    page_icon="icon.ico" # アイコンファイルのパスを指定 (スクリプトと同じディレクトリにある想定)
-    # ↑↑↑↑↑ この行の "icon.ico" の直後の特殊な空白を削除しました ↑↑↑↑↑
+# ──────────────────────────────────────────────
+# ① HTML <head> 埋め込み（PWA用 manifest & 各種アイコン）
+# ──────────────────────────────────────────────
+components.html(
+    """
+    <!-- PWA 用マニフェスト -->
+    <link rel="manifest" href="/static/manifest.json">
+    <!-- ブラウザタブ用 favicon -->
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <!-- iOS ホーム画面用アイコン -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+    <!-- iOS でネイティブ風表示 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="YourAppName">
+    """,
+    height=0,
 )
 
-# ----------------------------
-# UIのスタイル設定（洗練されたモダンデザイン - 暖色系背景）
-# ----------------------------
+# ──────────────────────────────────────────────
+# ② Streamlit ページ設定（ブラウザタブのアイコンも static 配信を使う）
+# ──────────────────────────────────────────────
+st.set_page_config(
+    page_title="【数出表】PDF → Excelへの変換",
+    page_icon="/static/favicon.ico",
+    layout="centered",
+)
+
+# ──────────────────────────────────────────────
+# ③ CSS／UI スタイル定義
+# ──────────────────────────────────────────────
 st.markdown("""
     <style>
         /* Google FontsのInter, Robotoをインポート */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Roboto:wght@300;400;500&display=swap');
-
-        /* アプリ全体の背景とフォント - 薄いオレンジ系の背景 */
-        .stApp {
-            background: #fff5e6;
-            font-family: 'Inter', sans-serif;
-        }
-
-        /* タイトル */
-        .title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 5px;
-        }
-
-        /* サブタイトル */
-        .subtitle {
-            font-size: 0.9rem;
-            color: #666;
-            margin-bottom: 25px;
-        }
-
-        /* ファイルアップローダーのカスタマイズ */
-        [data-testid="stFileUploader"] {
-            background: #ffffff;
-            border-radius: 10px;
-            border: 1px dashed #d0d0d0;
-            padding: 30px 20px;
-            margin: 20px 0;
-        }
-
-        [data-testid="stFileUploader"] label {
-            display: none; /* ラベルを非表示に */
-        }
-
-        [data-testid="stFileUploader"] section {
-            border: none !important;
-            background: transparent !important;
-        }
-
-        /* ファイル情報カード */
-        .file-card {
-            background: white;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin: 15px 0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border: 1px solid #eaeaea;
-        }
-
-        .file-info {
-            display: flex;
-            align-items: center;
-        }
-
-        .file-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 6px;
-            background-color: #f44336; /* PDFアイコン色 */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 12px;
-            color: white;
-            font-weight: 500;
-            font-size: 14px;
-        }
-
-        .file-details {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .file-name {
-            font-weight: 500;
-            color: #333;
-            font-size: 0.9rem;
-            margin-bottom: 3px;
-        }
-
-        .file-meta {
-            font-size: 0.75rem;
-            color: #888;
-        }
-
-        /* ローディングアニメーション */
-        .loading-spinner {
-            width: 20px;
-            height: 20px;
-            border: 2px solid rgba(0,0,0,0.1);
-            border-radius: 50%;
-            border-top-color: #ff9933; /* テーマカラー */
-            animation: spin 1s linear infinite;
-        }
-
-        /* 完了チェックアイコン */
-        .check-icon {
-            color: #ff9933; /* テーマカラー */
-            font-size: 20px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* 進行状況バー（簡易表示） */
-        .progress-bar {
-            height: 4px;
-            background-color: #e0e0e0;
-            border-radius: 2px;
-            width: 100%;
-            margin-top: 10px;
-            overflow: hidden; /* はみ出し防止 */
-        }
-
-        .progress-value {
-            height: 100%;
-            background-color: #ff9933; /* テーマカラー */
-            border-radius: 2px;
-            width: 60%; /* 固定値だが、アニメーションなどで動的に見せても良い */
-            transition: width 0.5s ease-in-out;
-        }
-
-        /* ダウンロードカード */
-        .download-card {
-            background: white;
-            border-radius: 8px;
-            padding: 16px;
-            margin: 20px 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.08);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border: 1px solid #eaeaea;
-            transition: all 0.2s ease;
-            cursor: pointer;
-            text-decoration: none; /* リンクの下線削除 */
-            color: inherit; /* 親要素の色を継承 */
-        }
-
-        .download-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-            background-color: #fffaf0; /* ホバー時の背景色 */
-            transform: translateY(-2px);
-        }
-
-        .download-info {
-            display: flex;
-            align-items: center;
-        }
-
-        .download-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            background-color: #ff9933; /* テーマカラー */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 12px;
-            color: white;
-            font-weight: 500;
-            font-size: 16px;
-        }
-
-        .download-details {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .download-name {
-            font-weight: 500;
-            color: #333;
-            font-size: 0.9rem;
-            margin-bottom: 3px;
-        }
-
-        .download-meta {
-            font-size: 0.75rem;
-            color: #888;
-        }
-
-        /* ダウンロードボタン風の表示 */
-        .download-button-imitation { /* ボタンとしての機能は a タグ全体が持つ */
-            background-color: #ff9933; /* テーマカラー */
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 8px 16px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            transition: background-color 0.2s;
-            display: flex;
-            align-items: center;
-        }
-        .download-card:hover .download-button-imitation {
-             background-color: #e68a00; /* ホバー時のボタン色 */
-        }
-
-        .download-button-icon {
-            margin-right: 6px;
-        }
-
-        /* Streamlit デフォルトスピナーのテキスト非表示用（必要なら） */
-        /* .stSpinner > div > div { visibility: hidden; } */
-        /* .stSpinner > div > div::after { content:"処理中..."; visibility: visible; } */
-
-        /* Streamlit コンテナのパディング調整 */
-        .css-1544g2n { /* Streamlit version specific */
-            padding-top: 2rem;
-        }
-        .css-18e3th9 { /* Streamlit version specific */
-            padding-top: 2rem;
-        }
-
-        /* セパレーター線 */
-        .separator {
-            height: 1px;
-            background-color: #ffe0b3; /* テーマカラーに合わせた薄い線 */
-            margin: 25px 0;
-        }
+        .stApp { background: #fff5e6; font-family: 'Inter', sans-serif; }
+        .title { font-size: 1.5rem; font-weight: 600; color: #333; margin-bottom: 5px; }
+        .subtitle { font-size: 0.9rem; color: #666; margin-bottom: 25px; }
+        [data-testid="stFileUploader"] { background: #fff; border-radius: 10px; border: 1px dashed #d0d0d0; padding: 30px 20px; margin: 20px 0; }
+        [data-testid="stFileUploader"] label { display: none; }
+        [data-testid="stFileUploader"] section { border: none !important; background: transparent !important; }
+        .file-card { background: white; border-radius: 8px; padding: 12px 16px; margin: 15px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: space-between; border: 1px solid #eaeaea; }
+        .file-info { display: flex; align-items: center; }
+        .file-icon { width: 36px; height: 36px; border-radius: 6px; background-color: #f44336; display: flex; align-items: center; justify-content: center; margin-right: 12px; color: white; font-weight: 500; font-size: 14px; }
+        .file-details { display: flex; flex-direction: column; }
+        .file-name { font-weight: 500; color: #333; font-size: 0.9rem; margin-bottom: 3px; }
+        .file-meta { font-size: 0.75rem; color: #888; }
+        .loading-spinner { width: 20px; height: 20px; border: 2px solid rgba(0,0,0,0.1); border-radius: 50%; border-top-color: #ff9933; animation: spin 1s linear infinite; }
+        .check-icon { color: #ff9933; font-size: 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .progress-bar { height: 4px; background-color: #e0e0e0; border-radius: 2px; width: 100%; margin-top: 10px; overflow: hidden; }
+        .progress-value { height: 100%; background-color: #ff9933; border-radius: 2px; width: 60%; transition: width 0.5s ease-in-out; }
+        .download-card { background: white; border-radius: 8px; padding: 16px; margin: 20px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: space-between; border: 1px solid #eaeaea; transition: all 0.2s ease; cursor: pointer; text-decoration: none; color: inherit; }
+        .download-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); background-color: #fffaf0; transform: translateY(-2px); }
+        .download-info { display: flex; align-items: center; }
+        .download-icon { width: 40px; height: 40px; border-radius: 8px; background-color: #ff9933; display: flex; align-items: center; justify-content: center; margin-right: 12px; color: white; font-weight: 500; font-size: 16px; }
+        .download-details { display: flex; flex-direction: column; }
+        .download-name { font-weight: 500; color: #333; font-size: 0.9rem; margin-bottom: 3px; }
+        .download-meta { font-size: 0.75rem; color: #888; }
+        .download-button-imitation { background-color: #ff9933; color: white; border: none; border-radius: 6px; padding: 8px 16px; font-size: 0.85rem; font-weight: 500; transition: background-color 0.2s; display: flex; align-items: center; }
+        .download-card:hover .download-button-imitation { background-color: #e68a00; }
+        .download-button-icon { margin-right: 6px; }
+        .separator { height: 1px; background-color: #ffe0b3; margin: 25px 0; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- メインコンテナ開始 ---
+# メインコンテナ開始
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
-
-# --- タイトルとサブタイトル ---
 st.markdown('<div class="title">【数出表】PDF → Excelへの変換</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">PDFの数出表をExcelに変換し、同時に盛り付け札を作成します。</div>', unsafe_allow_html=True)
 
-# ----------------------------
-# PDF→Excel変換用の関数群
-# ----------------------------
+# ──────────────────────────────────────────────
+# 以下、あなたの既存 PDF→Excel 変換ロジックをそのまま貼り付け
+# （関数定義やアップロード、処理、ダウンロード表示など）
+# ──────────────────────────────────────────────
 def is_number(text: str) -> bool:
-    """文字列が数値（整数）かどうかを判定する"""
     return bool(re.match(r'^\d+$', text.strip()))
 
 def get_line_groups(words: List[Dict[str, Any]], y_tolerance: float = 1.2) -> List[List[Dict[str, Any]]]:
