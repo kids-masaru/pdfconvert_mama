@@ -150,19 +150,14 @@ def split_line_using_boundaries(sorted_words_in_line: List[Dict[str, Any]], boun
         word_center_x = (word['x0'] + word['x1']) / 2
         for i in range(len(boundaries) - 1):
             left = boundaries[i]
-            right = boundaries[i+1]
+            right = boundaries[i + 1]
             # 単語の中心が境界内にあるかチェック
             if left <= word_center_x < right:
-                columns[i] += word['text'] + " " # セル内で単語間にスペースを追加
-                break # 次の単語へ
-    # 各セルの末尾の余分なスペースを削除
-    return [col.strip() for col in columns]
-                if left <= word_center_x < right:
                 if columns[i]:
                     columns[i] += " " + word["text"]
                 else:
                     columns[i] = word["text"]
-                break
+                break  # 次の単語へ
     return columns
 
 def extract_text_with_layout(page) -> List[List[str]]:
