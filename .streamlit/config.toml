@@ -1,6 +1,6 @@
-# .streamlit/config.toml
-[server]
-enableStaticServing = true
-# （オプションでstaticDirを明示的に設定する場合は下記も）
-# staticDir = "static"
+[browser]
+serverAddress = "localhost"
+serverPort = 8501
 
+[server]
+enableStaticServing = true  # 静的ファイル配信を有効化
