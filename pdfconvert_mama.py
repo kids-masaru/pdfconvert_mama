@@ -62,7 +62,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# メインコンテナ開始
+# --- メインコンテナ開始・タイトル表示 ---
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
 st.markdown('<div class="title">【数出表】PDF → Excelへの変換</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">PDFの数出表をExcelに変換し、同時に盛り付け札を作成します。</div>', unsafe_allow_html=True)
@@ -217,3 +217,4 @@ if uploaded and template_wb:
     else:
         with file_c:
             st.warning("PDFからデータを取得できませんでした。")
+st.markdown('</div>', unsafe_allow_html=True)
