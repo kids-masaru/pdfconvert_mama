@@ -1,5 +1,14 @@
 # pdfconvert_mama.py
 import streamlit as st
+# ──────────────────────────────────────────────
+# ① ここが最初の Streamlit コマンドでなければいけません
+# ──────────────────────────────────────────────
+st.set_page_config(
+    page_title="【数出表】PDF → Excelへの変換",
+    page_icon="/app/static/favicon.ico",
+    layout="centered",
+)
+
 import streamlit.components.v1 as components
 import pdfplumber
 import pandas as pd
@@ -11,7 +20,7 @@ from typing import List, Dict, Any
 from openpyxl import load_workbook  # .xlsm 読み書きのため
 
 # ──────────────────────────────────────────────
-# ① HTML <head> 埋め込み（PWA用 manifest & 各種アイコン）
+# ② HTML <head> 埋め込み（PWA用 manifest & 各種アイコン）
 # ──────────────────────────────────────────────
 components.html(
     """
@@ -26,15 +35,6 @@ components.html(
     <meta name="apple-mobile-web-app-title" content="数出表PDF→Excel">
     """,
     height=0,
-)
-
-# ──────────────────────────────────────────────
-# ② Streamlit ページ設定（ブラウザタブのアイコンも static 配信を使う）
-# ──────────────────────────────────────────────
-st.set_page_config(
-    page_title="【数出表】PDF → Excelへの変換",
-    page_icon="/app/static/favicon.ico",
-    layout="centered",
 )
 
 # ──────────────────────────────────────────────
