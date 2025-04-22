@@ -1,0 +1,3 @@
+[server]
+# ./static フォルダ内のファイルを /app/static/～ で配信する
+enableStaticServing = true
