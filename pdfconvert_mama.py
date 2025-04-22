@@ -570,7 +570,7 @@ if uploaded_pdf is not None and template_wb is not None:
                 original_pdf_name = os.path.splitext(uploaded_pdf.name)[0]
                 # 出力ファイル名を .xlsm に
                 output_filename = f"{original_pdf_name}_Merged.xlsm"
-                excel_size = len(final_excel_bytes) / 1024  # KB単位
+                excel_size = len(final_excel_bytes) / 1024
                 b64 = base64.b64encode(final_excel_bytes).decode('utf-8')
 
                 # MIMEタイプを .xlsm 用に設定
