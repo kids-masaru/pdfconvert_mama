@@ -1,0 +1,6 @@
+# .streamlit/config.toml
+[server]
+enableStaticServing = true
+# （オプションでstaticDirを明示的に設定する場合は下記も）
+# staticDir = "static"
+
