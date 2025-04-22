@@ -3,7 +3,7 @@ import streamlit as st
 # ✅ 最初に実行！
 st.set_page_config(
     page_title="【数出表】PDF → Excelへの変換",
-    page_icon="/static/favicon.ico",
+    page_icon="./static/favicon.ico",
     layout="centered",
 )
 
@@ -24,11 +24,11 @@ from openpyxl import load_workbook
 components.html(
     """
     <!-- PWA 用マニフェスト -->
-    <link rel="manifest" href="/static/manifest.json">
+    <link rel="manifest" href="./static/manifest.json">
     <!-- ブラウザタブ用 favicon -->
-    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="./static/favicon.ico">
     <!-- iOS ホーム画面用アイコン -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./static/icons/apple-touch-icon.png">
     <!-- iOS でネイティブ風表示 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="YourAppName">
