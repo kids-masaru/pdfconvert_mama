@@ -11,11 +11,13 @@ from openpyxl import load_workbook # .xlsm 読み書きのため
 # ----------------------------
 # ページ設定（アイコン指定：ブラウザタブ・ブックマーク用）
 # ----------------------------
-# icon.png をページアイコンとして使用
+# icon.ico をページアイコンとして使用
 st.set_page_config(
     page_title="【数出表】PDF → Excelへの変換",
     layout="centered",
-    page_icon="icon.png"  # アイコンファイルのパスを指定 (スクリプトと同じディレクトリにある想定)
+    # ↓↓↓↓↓ ここを icon.ico に修正します ↓↓↓↓↓
+    page_icon="icon.ico"  # アイコンファイルのパスを指定 (スクリプトと同じディレクトリにある想定)
+    # ↑↑↑↑↑ ここを icon.ico に修正します ↑↑↑↑↑
 )
 
 # ----------------------------
@@ -349,9 +351,9 @@ def extract_text_with_layout(page) -> List[List[str]]:
     # 列の境界線を推定
     boundaries = get_vertical_boundaries(page)
     if len(boundaries) < 2: # 境界線が不十分な場合
-         # 単純に行ごとにテキストを結合するフォールバック
-         lines = page.extract_text(layout=False, x_tolerance=3, y_tolerance=3)
-         return [[line] for line in lines.split('\n') if line.strip()]
+          # 単純に行ごとにテキストを結合するフォールバック
+          lines = page.extract_text(layout=False, x_tolerance=3, y_tolerance=3)
+          return [[line] for line in lines.split('\n') if line.strip()]
 
 
     # 単語を行ごとにグループ化
@@ -501,7 +503,7 @@ if uploaded_pdf is not None and template_wb is not None:
     with file_container:
         file_ext = uploaded_pdf.name.split('.')[-1].lower()
         file_icon = "PDF" # PDF固定
-        file_size = len(uploaded_pdf.getvalue()) / 1024  # KB単位
+        file_size = len(uploaded_pdf.getvalue()) / 1024  # KB単位
 
         progress_placeholder = st.empty()
         progress_placeholder.markdown(f"""
@@ -568,7 +570,7 @@ if uploaded_pdf is not None and template_wb is not None:
                 original_pdf_name = os.path.splitext(uploaded_pdf.name)[0]
                 # 出力ファイル名を .xlsm に
                 output_filename = f"{original_pdf_name}_Merged.xlsm"
-                excel_size = len(final_excel_bytes) / 1024  # KB単位
+                excel_size = len(final_excel_bytes) / 1024  # KB単位
                 b64 = base64.b64encode(final_excel_bytes).decode('utf-8')
 
                 # MIMEタイプを .xlsm 用に設定
