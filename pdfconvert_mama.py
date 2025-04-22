@@ -1,4 +1,12 @@
 import streamlit as st
+
+# ✅ 最初に実行！
+st.set_page_config(
+    page_title="【数出表】PDF → Excelへの変換",
+    page_icon="/static/favicon.ico",
+    layout="centered",
+)
+
 import streamlit.components.v1 as components
 import pdfplumber
 import pandas as pd
@@ -7,7 +15,8 @@ import re
 import base64
 import os
 from typing import List, Dict, Any
-from openpyxl import load_workbook  # .xlsm 読み書きのため
+from openpyxl import load_workbook
+
 
 # ──────────────────────────────────────────────
 # ① HTML <head> 埋め込み（PWA用 manifest & 各種アイコン）
@@ -27,14 +36,7 @@ components.html(
     height=0,
 )
 
-# ──────────────────────────────────────────────
-# ② Streamlit ページ設定（ブラウザタブのアイコンも static 配信を使う）
-# ──────────────────────────────────────────────
-st.set_page_config(
-    page_title="【数出表】PDF → Excelへの変換",
-    page_icon="/static/favicon.ico",
-    layout="centered",
-)
+
 
 # ──────────────────────────────────────────────
 # ③ CSS／UI スタイル定義
