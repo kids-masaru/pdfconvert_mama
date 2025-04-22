@@ -15,9 +15,9 @@ from openpyxl import load_workbook # .xlsm 読み書きのため
 st.set_page_config(
     page_title="【数出表】PDF → Excelへの変換",
     layout="centered",
-    # ↓↓↓↓↓ ここを icon.ico に修正します ↓↓↓↓↓
-    page_icon="icon.ico"  # アイコンファイルのパスを指定 (スクリプトと同じディレクトリにある想定)
-    # ↑↑↑↑↑ ここを icon.ico に修正します ↑↑↑↑↑
+    # ↓↓↓↓↓ この行の "icon.ico" の直後の特殊な空白を削除しました ↓↓↓↓↓
+    page_icon="icon.ico" # アイコンファイルのパスを指定 (スクリプトと同じディレクトリにある想定)
+    # ↑↑↑↑↑ この行の "icon.ico" の直後の特殊な空白を削除しました ↑↑↑↑↑
 )
 
 # ----------------------------
