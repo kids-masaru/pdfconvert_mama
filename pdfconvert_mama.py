@@ -503,7 +503,7 @@ if uploaded_pdf is not None and template_wb is not None:
     with file_container:
         file_ext = uploaded_pdf.name.split('.')[-1].lower()
         file_icon = "PDF" # PDF固定
-        file_size = len(uploaded_pdf.getvalue()) / 1024  # KB単位
+        file_size = len(uploaded_pdf.getvalue()) / 1024
 
         progress_placeholder = st.empty()
         progress_placeholder.markdown(f"""
