@@ -11,10 +11,17 @@ import traceback
 from typing import List, Dict, Any
 from openpyxl import load_workbook
 
+# ✅ 修正箇所: st.set_page_config() をここに移動します！
+st.set_page_config(
+    page_title="【数出表】PDF → Excelへの変換",
+    page_icon="./static/favicon.ico", # faviconのパスを修正
+    layout="centered",
+)
 
 # ──────────────────────────────────────────────
 # ① HTML <head> 埋め込み（PWA用 manifest & 各種アイコン）
 # ──────────────────────────────────────────────
+# この部分は st.set_page_config() の後に記述します
 components.html(
     """
     <link rel="manifest" href="./static/manifest.json">
@@ -24,13 +31,6 @@ components.html(
     <meta name="apple-mobile-web-app-title" content="YourAppName">
     """,
     height=0,
-)
-
-# ✅ 最初に実行！
-st.set_page_config(
-    page_title="【数出表】PDF → Excelへの変換",
-    page_icon="./static/favicon.ico", # faviconのパスを修正
-    layout="centered",
 )
 
 
