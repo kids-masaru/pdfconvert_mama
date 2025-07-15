@@ -483,6 +483,62 @@ if page_selection == "PDF → Excel 変換":
         
         return matched
 
+    def extract_client_names_from_pdf(pdf_file_obj):
+        """PDFから園名の下のクライアント名を抽出する"""
+        client_names = []
+    
+        try:
+            with pdfplumber.open(pdf_file_obj) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if not text:
+                        continue
+                
+                    lines = text.split('\n')
+                
+                    # 園名を探す
+                    garden_found = False
+                    for i, line in enumerate(lines):
+                        if '園名' in line:
+                            garden_found = True
+                            # 園名の次の行から処理開始
+                            start_index = i + 1
+                            break
+                
+                    if not garden_found:
+                        continue
+                
+                    # 園名の下からクライアント名を抽出
+                    for j in range(start_index, len(lines)):
+                        line = lines[j].strip()
+                    
+                        # 10000が出てきたら終了
+                        if '10000' in line:
+                            break
+                    
+                        # 空行はスキップ
+                        if not line:
+                            continue
+                    
+                        # IDっぽい数字のみの行はスキップ（クライアント名のみ抽出）
+                        if line.isdigit():
+                            continue
+                    
+                        # 数字で始まる行（ID+名前が混在）の場合、名前部分を抽出
+                        if re.match(r'^\d+', line):
+                            # 数字の後の文字列を抽出
+                            name_part = re.sub(r'^\d+\s*', '', line).strip()
+                            if name_part:
+                                client_names.append(name_part)
+                        else:
+                            # 名前のみの行
+                        c    lient_names.append(line)
+    
+        except Exception as e:
+            st.error(f"クライアント名抽出中にエラーが発生しました: {e}")
+    
+        return client_names
+
     # UI：PDFファイルアップロード
     uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf",
                                     help="ここにPDFファイルをドラッグ＆ドロップするか、クリックして選択してください。")
@@ -568,6 +624,23 @@ if page_selection == "PDF → Excel 変換":
                     st.error(f"「注文弁当の抽出」データ処理中にエラーが発生しました: {e}")
                     st.exception(e)
 
+        # DataFrameへの変換（クライアント抽出シート向け）
+        df_client_sheet = None
+        if df_paste_sheet is not None:
+            with st.spinner("「クライアント抽出」データを抽出中..."):
+                try:
+                    pdf_bytes_io.seek(0)
+                    client_names = extract_client_names_from_pdf(pdf_bytes_io)
+                    if not client_names:
+                        st.warning("PDFからクライアント名を抽出できませんでした。")
+                    else:
+                        # クライアント名をDataFrameに変換
+                        output_data_client = [[name] for name in client_names]
+                        df_client_sheet = pd.DataFrame(output_data_client, columns=['クライアント名'])
+                except Exception as e:
+                    st.error(f"「クライアント抽出」データ処理中にエラーが発生しました: {e}")
+                    st.exception(e)
+
         # Excelに書き込み
         if df_paste_sheet is not None:
             try:
@@ -598,6 +671,23 @@ if page_selection == "PDF → Excel 変換":
                         st.warning("「注文弁当の抽出」シートに書き込むデータがありませんでした。")
                     else:
                         st.warning("「注文弁当の抽出」データの準備ができませんでした。このシートへの書き込みはスキップされます。")
+
+                        # クライアント抽出シートへの書き込み
+                    if df_client_sheet is not None and not df_client_sheet.empty:
+                        try:
+                            ws_client = st.session_state.template_wb["クライアント抽出"]
+                            # 既存データをクリアしてから書き込む場合は以下のコメントを解除
+                            # ws_client.delete_rows(1, ws_client.max_row)
+                            for r_idx, row in df_client_sheet.iterrows():
+                                for c_idx, value in enumerate(row):
+                                    ws_client.cell(row=r_idx + 1, column=c_idx + 1, value=value)
+                        except KeyError:
+                            st.error("エラー: テンプレートファイルに「クライアント抽出」という名前のシートが見つかりません。")
+                            st.stop()
+                    elif df_client_sheet is not None and df_client_sheet.empty:
+                        st.warning("「クライアント抽出」シートに書き込むデータがありませんでした。")
+                    else:
+                        st.warning("「クライアント抽出」データの準備ができませんでした。このシートへの書き込みはスキップされます。")
 
                 # メモリ上でExcelファイルを生成
                 with st.spinner("Excelファイルを生成中..."):
