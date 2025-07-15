@@ -1,12 +1,4 @@
 import streamlit as st
-
-# ✅ 最初に実行！
-st.set_page_config(
-    page_title="【数出表】PDF → Excelへの変換",
-    page_icon="./static/favicon.ico",
-    layout="centered",
-)
-
 import streamlit.components.v1 as components
 import pdfplumber
 import pandas as pd
@@ -14,6 +6,8 @@ import io
 import re
 import base64
 import os
+import unicodedata
+import traceback
 from typing import List, Dict, Any
 from openpyxl import load_workbook
 
@@ -32,6 +26,12 @@ components.html(
     height=0,
 )
 
+# ✅ 最初に実行！
+st.set_page_config(
+    page_title="【数出表】PDF → Excelへの変換",
+    page_icon="./static/favicon.ico", # faviconのパスを修正
+    layout="centered",
+)
 
 
 # ──────────────────────────────────────────────
@@ -78,8 +78,7 @@ st.markdown('<div class="title">【数出表】PDF → Excelへの変換</div>',
 st.markdown('<div class="subtitle">PDFの数出表をExcelに変換し、同時に盛り付け札を作成します。</div>', unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────
-# 以下、あなたの既存 PDF→Excel 変換ロジックをそのまま貼り付け
-# （関数定義やアップロード、処理、ダウンロード表示など）
+# PDF→Excel 変換ロジック (Streamlit版から)
 # ──────────────────────────────────────────────
 def is_number(text: str) -> bool:
     return bool(re.match(r'^\d+$', text.strip()))
@@ -88,56 +87,46 @@ def get_line_groups(words: List[Dict[str, Any]], y_tolerance: float = 1.2) -> Li
     """y座標に基づいて単語を行ごとにグループ化する"""
     if not words:
         return []
-    # y座標（top）でソート
     sorted_words = sorted(words, key=lambda w: w['top'])
     groups = []
     current_group = [sorted_words[0]]
     current_top = sorted_words[0]['top']
     for word in sorted_words[1:]:
-        # y座標の差が許容範囲内なら同じ行とみなす
         if abs(word['top'] - current_top) <= y_tolerance:
             current_group.append(word)
         else:
-            # 新しい行グループを開始
             groups.append(current_group)
             current_group = [word]
             current_top = word['top']
-    groups.append(current_group) # 最後のグループを追加
+    groups.append(current_group)
     return groups
 
 def get_vertical_boundaries(page, tolerance: float = 2) -> List[float]:
     """ページの縦線と単語の左右端から列の境界線を推定する"""
     vertical_lines_x = []
-    # 縦線を検出
     for line in page.lines:
-        if abs(line['x0'] - line['x1']) < tolerance: # ほぼ垂直な線
+        if abs(line['x0'] - line['x1']) < tolerance:
             vertical_lines_x.append((line['x0'] + line['x1']) / 2)
-    # 重複を除きソート
     vertical_lines_x = sorted(list(set(round(x, 1) for x in vertical_lines_x)))
 
     words = page.extract_words()
-    if not words: # 単語がない場合は線の情報だけ返す
+    if not words:
         return vertical_lines_x
 
-    # ページの左右の境界も追加
     left_boundary = min(word['x0'] for word in words)
     right_boundary = max(word['x1'] for word in words)
 
-    # 縦線と左右境界を結合してソート
     boundaries = sorted(list(set([round(left_boundary, 1)] + vertical_lines_x + [round(right_boundary, 1)])))
 
-    # 近すぎる境界線をマージする（任意）
     merged_boundaries = []
     if boundaries:
         merged_boundaries.append(boundaries[0])
         for i in range(1, len(boundaries)):
-            if boundaries[i] - merged_boundaries[-1] > tolerance * 2: # ある程度離れていたら追加
+            if boundaries[i] - merged_boundaries[-1] > tolerance * 2:
                 merged_boundaries.append(boundaries[i])
-        # 最後の境界が右端でない場合は追加
         if right_boundary > merged_boundaries[-1] + tolerance * 2 :
                 merged_boundaries.append(round(right_boundary, 1))
         boundaries = sorted(list(set(merged_boundaries)))
-
 
     return boundaries
 
@@ -149,40 +138,31 @@ def split_line_using_boundaries(sorted_words_in_line: List[Dict[str, Any]], boun
         for i in range(len(boundaries) - 1):
             left = boundaries[i]
             right = boundaries[i + 1]
-            # 単語の中心が境界内にあるかチェック
             if left <= word_center_x < right:
                 if columns[i]:
                     columns[i] += " " + word["text"]
                 else:
                     columns[i] = word["text"]
-                break  # 次の単語へ
+                break
     return columns
 
 def extract_text_with_layout(page) -> List[List[str]]:
     """PDFページからレイアウトを考慮してテキストを行と列に抽出する"""
-    # 粗めに単語を抽出（許容誤差を調整）
     words = page.extract_words(x_tolerance=3, y_tolerance=3, keep_blank_chars=False)
     if not words:
         return []
 
-    # 列の境界線を推定
     boundaries = get_vertical_boundaries(page)
-    if len(boundaries) < 2: # 境界線が不十分な場合
-            # 単純に行ごとにテキストを結合するフォールバック
+    if len(boundaries) < 2:
             lines = page.extract_text(layout=False, x_tolerance=3, y_tolerance=3)
             return [[line] for line in lines.split('\n') if line.strip()]
 
-
-    # 単語を行ごとにグループ化
-    row_groups = get_line_groups(words, y_tolerance=1.5) # 行判定の閾値を調整
+    row_groups = get_line_groups(words, y_tolerance=1.5)
 
     result_rows = []
     for group in row_groups:
-        # 行内の単語をx座標でソート
         sorted_group = sorted(group, key=lambda w: w['x0'])
-        # 境界線を使ってセルに分割
         columns = split_line_using_boundaries(sorted_group, boundaries)
-        # 空行でなければ結果に追加
         if any(cell.strip() for cell in columns):
             result_rows.append(columns)
 
@@ -196,18 +176,14 @@ def remove_extra_empty_columns(rows: List[List[str]]) -> List[List[str]]:
     if num_cols == 0:
         return rows
 
-    # 各列が空かどうかをチェック
     is_col_empty = [True] * num_cols
     for r, row in enumerate(rows):
         for c in range(len(row)):
             if c < num_cols and row[c].strip():
                 is_col_empty[c] = False
-        # 行の長さが足りない場合、それ以降の列は空とみなす必要はない
 
-    # 保持する列のインデックス
     keep_indices = [c for c in range(num_cols) if not is_col_empty[c]]
 
-    # 新しい行リストを作成
     new_rows = []
     for row in rows:
         new_row = [row[i] if i < len(row) else "" for i in keep_indices]
@@ -215,94 +191,317 @@ def remove_extra_empty_columns(rows: List[List[str]]) -> List[List[str]]:
 
     return new_rows
 
-
-def format_excel_worksheet(worksheet):
-    """xlsxwriter ワークシートの書式設定（列幅・行高さ）"""
-    # 注意: この関数は xlsxwriter エンジン使用時にのみ有効
-    try:
-        worksheet.set_column('A:Z', 15) # 列幅を少し狭く調整
-        worksheet.set_default_row(18) # 行高さを少し狭く調整
-    except AttributeError:
-        # openpyxl の worksheet オブジェクトなど、他のエンジンでは無視
-        pass
-
-
 def post_process_rows(rows: List[List[str]]) -> List[List[str]]:
     """データの後処理: 例として「合計」行の上のセルをクリア"""
-    new_rows = [row[:] for row in rows] # リストをコピーして変更
+    new_rows = [row[:] for row in rows]
     for i, row in enumerate(new_rows):
         for j, cell in enumerate(row):
-            # "合計" という文字が含まれるセルを探す
-            if "合計" in str(cell): # 文字列に変換してからチェック
-                # そのセルが最初の行でなく、上の行にも同じ列が存在する場合
+            if "合計" in str(cell):
                 if i > 0 and j < len(new_rows[i-1]):
-                    # 上の行の同じ列を空白にする
                     new_rows[i-1][j] = ""
     return new_rows
 
-def pdf_to_excel_data(pdf_file) -> pd.DataFrame | None:
+def pdf_to_excel_data_for_paste_sheet(pdf_file) -> pd.DataFrame | None:
     """
     PDFファイルを読み込み、最初のページの表形式データをpandas DataFrameとして返す。
+    「貼り付け用」シート向け。
     """
     try:
+        # pdfplumber.open はファイルパスまたはバイナリI/Oオブジェクトを受け取る
         with pdfplumber.open(pdf_file) as pdf:
             if not pdf.pages:
                 st.warning("PDFにページがありません。")
                 return None
-            page = pdf.pages[0] # 最初のページのみ対象
+            page = pdf.pages[0]
 
-            # レイアウトを考慮してテキスト抽出
             rows = extract_text_with_layout(page)
-
-            # 空行を除去
             rows = [row for row in rows if any(cell.strip() for cell in row)]
             if not rows:
-                st.warning("PDFの最初のページからテキストデータを抽出できませんでした。")
+                st.warning("PDFの最初のページからテキストデータを抽出できませんでした。（貼り付け用）")
                 return None
 
-            # データ後処理（例：「合計」行の上のセルをクリア）
             rows = post_process_rows(rows)
-
-            # 完全に空の列を削除
             rows = remove_extra_empty_columns(rows)
-            if not rows or not rows[0]: # 空の列削除後に行や列がなくなった場合
-                    st.warning("空の列を削除した結果、データがなくなりました。")
+            if not rows or not rows[0]:
+                    st.warning("空の列を削除した結果、データがなくなりました。（貼り付け用）")
                     return None
 
-            # 最大列数を取得
             max_cols = max(len(row) for row in rows) if rows else 0
-
-            # すべての行が同じ列数になるように空白で埋める
             normalized_rows = [row + [''] * (max_cols - len(row)) for row in rows]
-
-            # DataFrameに変換（ヘッダーなし）
             df = pd.DataFrame(normalized_rows)
             return df
 
     except Exception as e:
-        st.error(f"PDF処理中にエラーが発生しました: {e}")
+        st.error(f"PDF処理中にエラーが発生しました（貼り付け用）: {e}")
         return None
+
+# ──────────────────────────────────────────────
+# PDF→Excel 変換ロジック (CLI版から)
+# ──────────────────────────────────────────────
+def extract_table_from_pdf_for_bento(pdf_file_obj):
+    """PDFから線で囲まれた表領域を正確に抽出 (「注文弁当の抽出」用)"""
+    tables = []
+    # pdfplumber.open はファイルパスまたはバイナリI/Oオブジェクトを受け取る
+    with pdfplumber.open(pdf_file_obj) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            
+            start_keywords = ["園名", "飯あり", "キャラ弁"]
+            end_keywords = ["おやつ", "合計", "PAGE"]
+            
+            if not any(kw in text for kw in start_keywords):
+                continue
+                
+            lines = page.lines
+            if not lines:
+                continue
+                
+            y_coords = sorted(set([line['top'] for line in lines] + [line['bottom'] for line in lines]))
+            if len(y_coords) < 2:
+                continue
+                
+            table_top = min(y_coords)
+            table_bottom = max(y_coords)
+            
+            x_coords = sorted(set([line['x0'] for line in lines] + [line['x1'] for line in lines]))
+            if len(x_coords) < 2:
+                continue
+                
+            table_left = min(x_coords)
+            table_right = max(x_coords)
+            
+            table_bbox = (table_left, table_top, table_right, table_bottom)
+            cropped_page = page.crop(table_bbox)
+            
+            table_settings = {
+                "vertical_strategy": "lines",
+                "horizontal_strategy": "lines",
+                "snap_tolerance": 3,
+                "join_tolerance": 3,
+                "edge_min_length": 15,
+            }
+            
+            table = cropped_page.extract_table(table_settings)
+            if table:
+                tables.append(table)
+    
+    return tables
+
+def find_correct_anchor_for_bento(table, target_row_text="赤"):
+    """「赤」行の直下にある「飯なし」を特定 (「注文弁当の抽出」用)"""
+    for row_idx, row in enumerate(table):
+        row_text = ''.join(str(cell) for cell in row if cell)
+        if target_row_text in row_text:
+            for offset in [1, 2]:
+                if row_idx + offset < len(table):
+                    next_row = table[row_idx + offset]
+                    for col_idx, cell in enumerate(next_row):
+                        if cell and "飯なし" in cell:
+                            return col_idx
+    return -1
+
+def extract_bento_range_for_bento(table, start_col):
+    """「飯なし」から「おやつ」までの範囲を抽出 (「注文弁当の抽出」用)"""
+    bento_list = []
+    end_col = -1
+    
+    for row in table:
+        row_text = ''.join(str(cell) for cell in row if cell)
+        if "おやつ" in row_text:
+            for col_idx, cell in enumerate(row):
+                if cell and "おやつ" in cell:
+                    end_col = col_idx
+                    break
+            if end_col != -1:
+                break
+    
+    if end_col == -1 or start_col >= end_col:
+        return []
+    
+    header_row_idx = None
+    anchor_row_idx = -1
+    for row_idx, row in enumerate(table):
+        if any(cell and "飯なし" in cell for cell in row):
+            anchor_row_idx = row_idx
+            break
+    
+    if anchor_row_idx == -1:
+        return []
+    
+    if anchor_row_idx - 1 >= 0:
+        header_row_idx = anchor_row_idx - 1
+    else:
+        return []
+    
+    for col in range(start_col + 1, end_col + 1):
+        if col < len(table[header_row_idx]):
+            cell_text = table[header_row_idx][col]
+        else:
+            cell_text = ""
+        
+        if cell_text and str(cell_text).strip() and "飯なし" not in str(cell_text):
+            bento_list.append(str(cell_text).strip())
+    
+    return bento_list
+
+def match_bento_names(pdf_bento_list, master_csv_path):
+    """
+    マスタデータと部分一致で照合し、I列の数字も一緒に表示
+    さらに、未マッチの場合にPDF名を右端から削って再照合する。
+    """
+    encodings = ['utf-8', 'shift_jis', 'cp932', 'euc-jp', 'iso-2022-jp']
+    
+    master_df = None
+    
+    for encoding in encodings:
+        try:
+            temp_df = pd.read_csv(master_csv_path, encoding=encoding)
+            
+            if not temp_df.empty:
+                master_df = temp_df
+                # print(f"マスタデータを {encoding} エンコーディングで読み込み成功") # Streamlitではログではなくst.infoなどを使う
+                break
+            else:
+                pass # st.warning(f"警告: {master_csv_path} を {encoding} で読み込みましたが、データが空でした。")
+
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            # print(f"エンコーディング {encoding} でCSV読み込みエラー: {e}")
+            continue
+    else:
+        st.error("マスタデータの読み込みに失敗しました。サポートされているエンコーディングを試しましたが、どれも機能しませんでした。")
+        return []
+    
+    if master_df is None:
+        return []
+
+    master_data_tuples = []
+    
+    try:
+        if '商品予定名' in master_df.columns and 'パン箱入数' in master_df.columns:
+            master_data_tuples = master_df[['商品予定名', 'パン箱入数']].dropna().values.tolist()
+            master_data_tuples = [(str(name), str(value)) for name, value in master_data_tuples]
+        elif '商品予定名' in master_df.columns:
+            st.warning("警告: マスタCSVに「パン箱入数」列が見つかりません。商品予定名のみで照合します。")
+            master_data_tuples = master_df['商品予定名'].dropna().astype(str).tolist()
+            master_data_tuples = [(name, "") for name in master_data_tuples]
+        else:
+            st.error("エラー: マスタCSVに「商品予定名」列が見つかりません。")
+            return []
+
+    except KeyError as e:
+        st.error(f"エラー: マスタCSVに必要な列が見つかりません: {e}。CSVのヘッダー名を確認してください。")
+        return []
+    except Exception as e:
+        st.error(f"マスタデータ処理中に予期せぬエラーが発生しました: {e}")
+        return []
+    
+    if len(master_data_tuples) == 0:
+        st.warning("マスタデータから有効な商品情報が抽出できませんでした。")
+        return []
+
+    matched = []
+    
+    normalized_master_data_tuples = []
+    for master_name, master_id in master_data_tuples:
+        normalized_name = unicodedata.normalize('NFKC', master_name)
+        normalized_name = re.sub(r'\s+', '', normalized_name)
+        normalized_master_data_tuples.append((normalized_name, master_name, master_id))
+    
+    for pdf_name in pdf_bento_list:
+        original_normalized_pdf_name = unicodedata.normalize('NFKC', str(pdf_name))
+        original_normalized_pdf_name = re.sub(r'\s+', '', original_normalized_pdf_name)
+        
+        current_pdf_name_for_matching = original_normalized_pdf_name
+        
+        found_match = False
+        found_original_master_name = None
+        found_id = None
+        
+        for norm_m_name, orig_m_name, m_id in normalized_master_data_tuples:
+            if norm_m_name.startswith(current_pdf_name_for_matching):
+                found_original_master_name = orig_m_name
+                found_id = m_id
+                found_match = True
+                break
+        
+        if not found_match:
+            for norm_m_name, orig_m_name, m_id in normalized_master_data_tuples:
+                if current_pdf_name_for_matching in norm_m_name:
+                    found_original_master_name = orig_m_name
+                    found_id = m_id
+                    found_match = True
+                    break
+        
+        if not found_match:
+            for num_chars_to_remove in range(1, 4): 
+                if len(original_normalized_pdf_name) > num_chars_to_remove:
+                    truncated_pdf_name = original_normalized_pdf_name[:-num_chars_to_remove]
+                    
+                    for norm_m_name, orig_m_name, m_id in normalized_master_data_tuples:
+                        if norm_m_name.startswith(truncated_pdf_name):
+                            found_original_master_name = orig_m_name
+                            found_id = m_id
+                            found_match = True
+                            # print(f"   [調整マッチ] PDF: '{pdf_name}' (正規化: '{original_normalized_pdf_name}') => 短縮: '{truncated_pdf_name}' でマスタ: '{orig_m_name}' と前方一致")
+                            break
+                    
+                    if not found_match:
+                        for norm_m_name, orig_m_name, m_id in normalized_master_data_tuples:
+                            if truncated_pdf_name in norm_m_name:
+                                found_original_master_name = orig_m_name
+                                found_id = m_id
+                                found_match = True
+                                # print(f"   [調整マッチ] PDF: '{pdf_name}' (正規化: '{original_normalized_pdf_name}') => 短縮: '{truncated_pdf_name}' でマスタ: '{orig_m_name}' と部分一致")
+                                break
+                
+                if found_match:
+                    break
+        
+        if found_original_master_name:
+            if found_id:
+                matched.append(f"{found_original_master_name} (入数: {found_id})")
+            else:
+                matched.append(found_original_master_name)
+        else:
+            matched.append(f"{pdf_name} (未マッチ)")
+    
+    return matched
 
 
 # ----------------------------
 # テンプレートExcelファイルのパス設定と存在確認
 # ----------------------------
-template_path = "template.xlsm" # ここで .xlsm を指定
-template_wb = None # Workbookオブジェクトを格納する変数
+# Streamlitではスクリプトと同じディレクトリからの相対パスでファイルを探す
+template_path = "template.xlsm"
+master_csv_path = "商品マスタ一覧.csv" # マスタCSVのパス
 
-if not os.path.exists(template_path):
-    st.error(f"テンプレートファイル '{template_path}' が見つかりません。スクリプトと同じ場所に配置してください。")
-    st.stop() # テンプレートがない場合は処理を停止
-else:
-    # テンプレートファイルの読み込みを試みる
+template_wb = None
+
+# Streamlitの起動時に一度だけ実行されるように、セッションステートで管理
+if 'template_wb_loaded' not in st.session_state:
+    st.session_state.template_wb_loaded = False
+    st.session_state.template_wb = None
+
+if not st.session_state.template_wb_loaded:
+    if not os.path.exists(template_path):
+        st.error(f"テンプレートファイル '{template_path}' が見つかりません。スクリプトと同じ場所に配置してください。")
+        st.stop()
+    if not os.path.exists(master_csv_path):
+        st.error(f"商品マスタファイル '{master_csv_path}' が見つかりません。スクリプトと同じ場所に配置してください。")
+        st.stop()
+    
     try:
-        # マクロを保持して読み込む
-        template_wb = load_workbook(template_path, keep_vba=True)
-        # --- st.success(...) の行を削除 ---
+        st.session_state.template_wb = load_workbook(template_path, keep_vba=True)
+        st.session_state.template_wb_loaded = True
     except Exception as e:
         st.error(f"テンプレートファイル '{template_path}' の読み込み中にエラーが発生しました: {e}")
-        template_wb = None # エラー時は None に設定
-        st.stop() # 読み込めない場合は停止
+        st.session_state.template_wb = None
+        st.stop()
+
+template_wb = st.session_state.template_wb # セッションステートからワークブックを取得
+
 
 # ----------------------------
 # UI：PDFファイルアップロード
@@ -319,7 +518,7 @@ if uploaded_pdf is not None and template_wb is not None:
     # --- 処理中の表示 ---
     with file_container:
         file_ext = uploaded_pdf.name.split('.')[-1].lower()
-        file_icon = "PDF" # PDF固定
+        file_icon = "PDF"
         file_size = len(uploaded_pdf.getvalue()) / 1024
 
         progress_placeholder = st.empty()
@@ -337,34 +536,107 @@ if uploaded_pdf is not None and template_wb is not None:
         <div class="progress-bar"><div class="progress-value"></div></div>
         """, unsafe_allow_html=True)
 
-    # --- PDFからDataFrameへの変換 ---
-    with st.spinner("PDFデータを抽出中..."):
-        df_pdf = pdf_to_excel_data(uploaded_pdf)
+    # --- PDFのバイナリデータをio.BytesIOに変換 (pdfplumberが直接処理できるように) ---
+    pdf_bytes_io = io.BytesIO(uploaded_pdf.getvalue())
 
-    if df_pdf is not None and not df_pdf.empty:
+
+    # --- DataFrameへの変換（貼り付け用シート向け）---
+    df_paste_sheet = None
+    with st.spinner("「貼り付け用」データを抽出中..."):
+        # `pdf_bytes_io`は一度読み込むとポインタが終端に行くので、リセットして再度渡す
+        pdf_bytes_io.seek(0) 
+        df_paste_sheet = pdf_to_excel_data_for_paste_sheet(pdf_bytes_io)
+
+    # --- DataFrameへの変換（注文弁当の抽出シート向け）---
+    df_bento_sheet = None
+    if df_paste_sheet is not None: # 貼り付け用データが成功した場合のみ次へ
+        with st.spinner("「注文弁当の抽出」データを抽出中..."):
+            try:
+                pdf_bytes_io.seek(0) # ポインタをリセット
+                tables = extract_table_from_pdf_for_bento(pdf_bytes_io)
+                if not tables:
+                    st.warning("PDFから表を抽出できませんでした。（注文弁当の抽出）")
+                else:
+                    main_table = max(tables, key=lambda t: len(t) * len(t[0])) if tables else []
+                    if not main_table:
+                        st.warning("メインとなる表が見つかりませんでした。（注文弁当の抽出）")
+                    else:
+                        anchor_col = find_correct_anchor_for_bento(main_table)
+                        if anchor_col == -1:
+                            st.warning("「赤」行下の「飯なし」を見つけられませんでした。（注文弁当の抽出）")
+                        else:
+                            bento_list = extract_bento_range_for_bento(main_table, anchor_col)
+                            if not bento_list:
+                                st.warning("弁当範囲を抽出できませんでした。（注文弁当の抽出）")
+                            else:
+                                matched_list = match_bento_names(bento_list, master_csv_path)
+                                output_data_bento = []
+                                for item in matched_list:
+                                    match_found = False
+                                    match = re.search(r' \(入数: (.+?)\)$', item)
+                                    if match:
+                                        bento_name = item[:match.start()]
+                                        bento_count = match.group(1)
+                                        output_data_bento.append([bento_name.strip(), bento_count.strip()])
+                                        match_found = True
+                                    elif "(未マッチ)" in item:
+                                        bento_name = item.replace(" (未マッチ)", "").strip()
+                                        bento_count = ""
+                                        output_data_bento.append([bento_name, bento_count])
+                                        match_found = True
+                                    if not match_found:
+                                        output_data_bento.append([item.strip(), ""])
+                                df_bento_sheet = pd.DataFrame(output_data_bento, columns=['商品予定名', 'パン箱入数'])
+            except Exception as e:
+                st.error(f"「注文弁当の抽出」データ処理中にエラーが発生しました: {e}")
+                st.exception(e) # 詳細なエラー表示
+
+    # --- Excelに書き込み ---
+    if df_paste_sheet is not None and (df_bento_sheet is not None or not (tables and main_table and bento_list)): # 貼り付け用データがある、かつ弁当データも正常か、あるいは弁当データは抽出できなくても他のデータがあれば処理を続行
         try:
-            # --- テンプレートにデータを書き込み ---
-            with st.spinner("テンプレートにデータを書き込み中..."):
-                # 「貼り付け用」という名前のワークシートを取得
+            with st.spinner("Excelテンプレートにデータを書き込み中..."):
+                # 「貼り付け用」シートへの書き込み
                 try:
-                    template_ws = template_wb["貼り付け用"]
+                    ws_paste = template_wb["貼り付け用"]
+                    # 既存のデータをクリア (必要であれば)
+                    # A1から始まるため、既存データを上書きする形で問題なければこのクリアは不要
+                    # ws_paste.delete_rows(1, ws_paste.max_row) # 全行削除する例
+
+                    for r_idx, row in df_paste_sheet.iterrows():
+                        for c_idx, value in enumerate(row):
+                            ws_paste.cell(row=r_idx + 1, column=c_idx + 1, value=value)
                 except KeyError:
                     st.error("エラー: テンプレートファイルに「貼り付け用」という名前のシートが見つかりません。")
-                    st.stop() # シートが見つからない場合は処理を停止
+                    st.stop()
+                
+                # 「注文弁当の抽出」シートへの書き込み (df_bento_sheetがNoneでない場合のみ)
+                if df_bento_sheet is not None and not df_bento_sheet.empty:
+                    try:
+                        ws_bento = template_wb["注文弁当の抽出"]
+                        # 既存のデータをクリア (必要であれば)
+                        # ws_bento.delete_rows(1, ws_bento.max_row) # 全行削除する例
 
-                # 注意: 既存のデータをクリアする場合はここで行う
-                # 例: template_ws.delete_rows(1, template_ws.max_row) # 全行削除
+                        # DataFrameのヘッダーを書き込む場合は、ここで行インデックスを調整
+                        # 例: ヘッダーを1行目に書き、データを2行目から書き込む場合
+                        # for col_idx, col_name in enumerate(df_bento_sheet.columns):
+                        #     ws_bento.cell(row=1, column=col_idx + 1, value=col_name)
+                        # r_offset = 1 # データは2行目から
 
-                # DataFrameのデータをシートに書き込む (1行目、1列目から)
-                for r_idx, row in df_pdf.iterrows():
-                    for c_idx, value in enumerate(row):
-                        # openpyxlは1始まりのインデックス
-                        template_ws.cell(row=r_idx + 1, column=c_idx + 1, value=value)
+                        for r_idx, row in df_bento_sheet.iterrows():
+                            for c_idx, value in enumerate(row):
+                                ws_bento.cell(row=r_idx + 1, column=c_idx + 1, value=value) # r_idx+1 はA1から、r_idx+2はA2から
+                    except KeyError:
+                        st.error("エラー: テンプレートファイルに「注文弁当の抽出」という名前のシートが見つかりません。")
+                        st.stop()
+                elif df_bento_sheet is not None and df_bento_sheet.empty:
+                    st.warning("「注文弁当の抽出」シートに書き込むデータがありませんでした。")
+                else:
+                    st.warning("「注文弁当の抽出」データの準備ができませんでした。このシートへの書き込みはスキップされます。")
+
 
             # --- メモリ上でExcelファイルを生成 ---
             with st.spinner("Excelファイルを生成中..."):
                 output = io.BytesIO()
-                # keep_vba=True でロードしたので、そのまま保存すればマクロは保持される
                 template_wb.save(output)
                 output.seek(0)
                 final_excel_bytes = output.read()
@@ -386,18 +658,15 @@ if uploaded_pdf is not None and template_wb is not None:
 
             # --- ダウンロードリンクの生成 ---
             with download_container:
-                st.markdown('<div class="separator"></div>', unsafe_allow_html=True) # 区切り線
+                st.markdown('<div class="separator"></div>', unsafe_allow_html=True)
 
                 original_pdf_name = os.path.splitext(uploaded_pdf.name)[0]
-                # 出力ファイル名を .xlsm に
-                output_filename = f"{original_pdf_name}_Merged.xlsm"
+                output_filename = f"{original_pdf_name}_Processed.xlsm" # ファイル名をより明確に
                 excel_size = len(final_excel_bytes) / 1024
                 b64 = base64.b64encode(final_excel_bytes).decode('utf-8')
 
-                # MIMEタイプを .xlsm 用に設定
                 mime_type = "application/vnd.ms-excel.sheet.macroEnabled.12"
 
-                # ダウンロードリンク (HTMLコメント削除済み)
                 href = f"""
                 <a href="data:{mime_type};base64,{b64}" download="{output_filename}" class="download-card">
                     <div class="download-info">
@@ -417,7 +686,7 @@ if uploaded_pdf is not None and template_wb is not None:
 
         except Exception as e:
             st.error(f"Excelファイルへの書き込みまたは生成中にエラーが発生しました: {e}")
-            # エラー発生時は完了表示を元に戻すか、エラー表示を維持
+            st.exception(e) # 詳細なエラー表示
             with file_container:
                     progress_placeholder.markdown(f"""
                     <div class="file-card" style="border-color: red;">
@@ -431,8 +700,8 @@ if uploaded_pdf is not None and template_wb is not None:
                     </div>
                     """, unsafe_allow_html=True)
 
-    elif df_pdf is None:
-        # pdf_to_excel_data 関数内でエラーまたは警告が出力されているはず
+    else: # どちらかのデータ抽出に失敗した場合
+        st.warning("PDFデータ抽出に問題があったため、Excelファイルは生成されませんでした。エラーメッセージを確認してください。")
         with file_container:
             progress_placeholder.markdown(f"""
             <div class="file-card" style="border-color: orange;">
@@ -440,11 +709,12 @@ if uploaded_pdf is not None and template_wb is not None:
                     <div class="file-icon" style="background-color: orange;">!</div>
                     <div class="file-details">
                         <div class="file-name">{uploaded_pdf.name}</div>
-                        <div class="file-meta" style="color: orange;">PDFからデータを抽出できませんでした</div>
+                        <div class="file-meta" style="color: orange;">データ抽出に失敗しました</div>
                     </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
 
 # --- テンプレートファイルが見つからないか読み込めなかった場合 ---
 elif uploaded_pdf is not None and template_wb is None:
