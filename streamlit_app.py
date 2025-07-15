@@ -72,7 +72,6 @@ st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
 # サイドバーにナビゲーションを追加
 st.sidebar.header("ナビゲーション")
-st.sidebar.page_link("streamlit_app.py", label="ホーム") # ホームページへのリンク
 st.sidebar.page_link("pages/1_PDF_to_Excel.py", label="PDF → Excel 変換")
 st.sidebar.page_link("pages/2_Master_Data_Settings.py", label="設定（マスタデータ更新）")
 
