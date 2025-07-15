@@ -349,8 +349,12 @@ if uploaded_pdf is not None and template_wb is not None:
         try:
             # --- テンプレートにデータを書き込み ---
             with st.spinner("テンプレートにデータを書き込み中..."):
-                # テンプレートの最初のワークシートを取得
-                template_ws = template_wb.worksheets[0]
+                # 「貼り付け用」という名前のワークシートを取得
+                try:
+                    template_ws = template_wb["貼り付け用"]
+                except KeyError:
+                    st.error("エラー: テンプレートファイルに「貼り付け用」という名前のシートが見つかりません。")
+                    st.stop() # シートが見つからない場合は処理を停止
 
                 # 注意: 既存のデータをクリアする場合はここで行う
                 # 例: template_ws.delete_rows(1, template_ws.max_row) # 全行削除
