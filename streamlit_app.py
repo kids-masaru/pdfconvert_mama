@@ -732,5 +732,3 @@ elif page_selection == "マスタ設定":
 
 # メインコンテナ終了
 st.markdown('</div>', unsafe_allow_html=True)
-
-```
