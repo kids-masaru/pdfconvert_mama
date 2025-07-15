@@ -11,6 +11,13 @@ import traceback
 from typing import List, Dict, Any
 from openpyxl import load_workbook
 
+# ✅ 修正: st.set_page_config() を最初に移動
+st.set_page_config(
+    page_title="【数出表】PDF → Excelへの変換",
+    page_icon="./static/favicon.ico", # faviconのパスを修正
+    layout="centered",
+)
+
 # --- Streamlit Session Stateの初期化 ---
 # マスタデータをセッションステートで管理し、アプリ実行中に保持する
 if 'master_df' not in st.session_state:
@@ -56,14 +63,6 @@ if not st.session_state.template_wb_loaded:
         st.error(f"テンプレートファイル '{template_path}' の読み込み中にエラーが発生しました: {e}")
         st.session_state.template_wb = None
         st.stop()
-
-
-# ✅ 修正箇所: st.set_page_config() をここに移動します！
-st.set_page_config(
-    page_title="【数出表】PDF → Excelへの変換",
-    page_icon="./static/favicon.ico", # faviconのパスを修正
-    layout="centered",
-)
 
 # ──────────────────────────────────────────────
 # ① HTML <head> 埋め込み（PWA用 manifest & 各種アイコン）
