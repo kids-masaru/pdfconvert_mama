@@ -84,7 +84,6 @@ components.html(
 # ──────────────────────────────────────────────
 st.markdown("""
     <style>
-        /* (CSSの記述は変更なしのため省略) */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Roboto:wght@300;400;500&display=swap');
         .stApp { background: #fff5e6; font-family: 'Inter', sans-serif; }
         .title { font-size: 1.5rem; font-weight: 600; color: #333; margin-bottom: 5px; }
@@ -140,7 +139,7 @@ if page_selection == "PDF → Excel 変換":
     st.markdown('<div class="subtitle">PDFの数出表をExcelに変換し、同時に盛り付け札を作成します。</div>', unsafe_allow_html=True)
 
     # ──────────────────────────────────────────────
-    # PDF→Excel 変換ロジック (ここから下は変更なし)
+    # PDF→Excel 変換ロジック
     # ──────────────────────────────────────────────
     def is_number(text: str) -> bool:
         return bool(re.match(r'^\d+$', text.strip()))
@@ -483,7 +482,8 @@ if page_selection == "PDF → Excel 変換":
         
         return matched
 
-        def extract_client_names_from_pdf(pdf_file_obj):
+    # ✅ 修正: 関数の定義を正しいインデントで記述
+    def extract_client_names_from_pdf(pdf_file_obj):
         """PDFから園名の下のクライアント名を抽出する"""
         client_names = []
     
@@ -537,7 +537,7 @@ if page_selection == "PDF → Excel 変換":
                     # 処理した行を表示
                     st.write("📋 処理対象の行:")
                     for line_info in processing_lines:
-                    st.write(line_info)
+                        st.write(line_info)
                 
                     # 実際の抽出処理
                     extracted_count = 0
@@ -720,7 +720,7 @@ if page_selection == "PDF → Excel 変換":
                     else:
                         st.warning("「注文弁当の抽出」データの準備ができませんでした。このシートへの書き込みはスキップされます。")
 
-                        # クライアント抽出シートへの書き込み
+                    # クライアント抽出シートへの書き込み
                     if df_client_sheet is not None and not df_client_sheet.empty:
                         try:
                             ws_client = st.session_state.template_wb["クライアント抽出"]
@@ -793,10 +793,7 @@ if page_selection == "PDF → Excel 変換":
                 with file_container:
                         progress_placeholder.markdown(f"エラー発生: {e}", unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────
-# ✅ ★★★ ここからが修正・追加した箇所 ★★★
 # マスタ設定 ページ
-# ──────────────────────────────────────────────
 elif page_selection == "マスタ設定":
     st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">商品マスタのCSVファイルをアップロードして更新します。現在のマスタデータも確認できます。</div>', unsafe_allow_html=True)
@@ -857,7 +854,6 @@ elif page_selection == "マスタ設定":
         except Exception as e:
             st.error(f"マスタ更新処理中にエラーが発生しました: {e}")
             st.exception(e)
-
 
     st.markdown('<div class="separator"></div>', unsafe_allow_html=True)
 
