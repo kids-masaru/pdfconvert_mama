@@ -985,7 +985,7 @@ if page_selection == "PDF → Excel 変換":
                 st.markdown(create_progress_bar(100), unsafe_allow_html=True)
             
                 # 成功メッセージとダウンロードボタンを改善されたスタイルで表示
-                st.markdown(\'<div class="main-card">\', unsafe_allow_html=True)
+                st.markdown('<div class="main-card">', unsafe_allow_html=True)
                 st.success("✅ 処理が完了しました！")
                 
                 original_pdf_name = os.path.splitext(uploaded_pdf.name)[0]
