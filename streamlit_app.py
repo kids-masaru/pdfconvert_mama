@@ -482,94 +482,125 @@ if page_selection == "PDF → Excel 変換":
         
         return matched
 
-    # ✅ 修正: 関数の定義を正しいインデントで記述
     def extract_client_names_from_pdf(pdf_file_obj):
-        """PDFから園名の下のクライアント名を抽出する"""
+        """PDFから園名の下のクライアント名を抽出する（縦線を考慮した改良版）"""
         client_names = []
     
         try:
             with pdfplumber.open(pdf_file_obj) as pdf:
                 for page_num, page in enumerate(pdf.pages):
                     st.write(f"📄 ページ {page_num + 1} を処理中...")
-                    text = page.extract_text()
+                
+                    # 縦線の位置を検出
+                    vertical_lines = []
+                    if page.lines:
+                        for line in page.lines:
+                            # 縦線を検出（x0とx1がほぼ同じで、y0とy1が異なる）
+                            if abs(line['x0'] - line['x1']) < 2:  # 縦線の判定
+                                vertical_lines.append(line['x0'])
+                
+                    # 縦線をソート
+                    vertical_lines = sorted(list(set(vertical_lines)))
+                    st.write(f"📏 検出された縦線の位置: {vertical_lines}")
+                
+                    # 1つ目と2つ目の縦線の間の範囲を設定
+                    if len(vertical_lines) >= 2:
+                        left_bound = vertical_lines[0]
+                        right_bound = vertical_lines[1]
+                        st.write(f"🎯 クライアント名抽出範囲: x={left_bound:.1f} から x={right_bound:.1f}")
+                    else:
+                        st.write("⚠️ 十分な縦線が検出されませんでした。テキスト全体から抽出します。")
+                        left_bound = None
+                        right_bound = None
+                
+                    # テキストを抽出（縦線の範囲を考慮）
+                    if left_bound is not None and right_bound is not None:
+                        # 指定された範囲内のテキストを抽出
+                        crop_box = (left_bound, 0, right_bound, page.height)
+                        cropped_page = page.crop(crop_box)
+                        text = cropped_page.extract_text()
+                        st.write(f"📄 範囲指定でのテキスト抽出完了")
+                    else:
+                        # 通常のテキスト抽出
+                        text = page.extract_text()
+                
                     if not text:
                         st.write("❌ このページからテキストを抽出できませんでした")
                         continue
                 
                     # デバッグ：抽出されたテキストの一部を表示
-                    st.write(f"🔍 抽出されたテキストの最初の500文字:")
-                    st.code(text[:500])
+                    st.write(f"🔍 抽出されたテキストの最初の300文字:")
+                    st.code(text[:300])
                 
                     lines = text.split('\n')
                     st.write(f"📝 総行数: {len(lines)}")
                 
                     # 園名を探す
                     garden_found = False
-                    garden_line_num = -1
+                    start_index = -1
                     for i, line in enumerate(lines):
                         if '園名' in line:
                             garden_found = True
-                            garden_line_num = i
                             start_index = i + 1
                             st.write(f"✅ 園名を発見！ 行番号: {i}, 内容: '{line}'")
                             break
                 
                     if not garden_found:
                         st.write("❌ 園名が見つかりませんでした")
-                        # 念のため最初の10行を表示
-                        st.write("📋 最初の10行:")
-                        for i, line in enumerate(lines[:10]):
-                            st.write(f"  {i}: '{line}'")
                         continue
                 
-                    # 園名の下の行を確認
-                    st.write(f"🔍 園名の下の行を確認（行 {start_index} から）:")
-                    processing_lines = []
-                    for j in range(start_index, min(start_index + 20, len(lines))):  # 最大20行まで表示
-                        line = lines[j].strip()
-                        processing_lines.append(f"  {j}: '{line}'")
-                    
-                        # 10000が出てきたら終了
-                        if '10000' in line:
-                            st.write(f"🛑 10000を発見！ 行番号: {j}, 内容: '{line}'")
-                            break
+                    # 園名の下からクライアント名を抽出
+                    st.write(f"🔍 園名の下の行から抽出開始（行 {start_index} から）:")
                 
-                    # 処理した行を表示
-                    st.write("📋 処理対象の行:")
-                    for line_info in processing_lines:
-                        st.write(line_info)
-                
-                    # 実際の抽出処理
                     extracted_count = 0
+                    expect_id = True  # 最初はIDを期待
+                
                     for j in range(start_index, len(lines)):
                         line = lines[j].strip()
                     
                         # 10000が出てきたら終了
                         if '10000' in line:
+                            st.write(f"🛑 10000を発見！ 処理終了")
                             break
                     
                         # 空行はスキップ
                         if not line:
                             continue
                     
-                        # IDっぽい数字のみの行はスキップ（クライアント名のみ抽出）
-                        if line.isdigit():
-                            st.write(f"⏭️ 数字のみの行をスキップ: '{line}'")
-                            continue
-                    
-                        # 数字で始まる行（ID+名前が混在）の場合、名前部分を抽出
-                        if re.match(r'^\d+', line):
-                            # 数字の後の文字列を抽出
-                            name_part = re.sub(r'^\d+\s*', '', line).strip()
-                            if name_part:
-                                client_names.append(name_part)
-                                extracted_count += 1
-                                st.write(f"✅ 抽出（ID+名前）: '{line}' → '{name_part}'")
+                        # IDとクライアント名の交互パターンを処理
+                        if expect_id:
+                            # IDを期待している場合
+                            if re.match(r'^\d+', line):
+                                # IDが見つかった
+                                id_match = re.match(r'^(\d+)', line)
+                                if id_match:
+                                    current_id = id_match.group(1)
+                                    st.write(f"🔢 ID発見: '{current_id}'")
+                                    expect_id = False  # 次はクライアント名を期待
+                                
+                                    # 同じ行にクライアント名が含まれているかチェック
+                                    remaining_text = line[len(current_id):].strip()
+                                    if remaining_text and not remaining_text.isdigit():
+                                        # 同じ行にクライアント名がある
+                                        client_names.append(remaining_text)
+                                        extracted_count += 1
+                                        st.write(f"✅ 抽出（ID+名前）: '{remaining_text}'")
+                                        expect_id = True  # 次はまたIDを期待
+                            else:
+                                # IDが期待されているのに見つからない場合はスキップ
+                                st.write(f"⏭️ ID期待中だが非数字行をスキップ: '{line}'")
                         else:
-                            # 名前のみの行
-                            client_names.append(line)
-                            extracted_count += 1
-                            st.write(f"✅ 抽出（名前のみ）: '{line}'")
+                            # クライアント名を期待している場合
+                            if not line.isdigit():
+                                # 数字以外の行をクライアント名として抽出
+                                client_names.append(line)
+                                extracted_count += 1
+                                st.write(f"✅ 抽出（名前）: '{line}'")
+                                expect_id = True  # 次はIDを期待
+                            else:
+                                # 数字の行が来た場合、これは次のIDの可能性
+                                st.write(f"🔢 次のID発見: '{line}'")
+                                expect_id = False  # 次はクライアント名を期待
                 
                     st.write(f"📊 このページから {extracted_count} 件のクライアント名を抽出しました")
     
@@ -577,6 +608,7 @@ if page_selection == "PDF → Excel 変換":
             st.error(f"クライアント名抽出中にエラーが発生しました: {e}")
             st.exception(e)
     
+        # 結果の表示
         st.write(f"🎯 最終結果: 総 {len(client_names)} 件のクライアント名を抽出")
         if client_names:
             st.write("抽出されたクライアント名:")
