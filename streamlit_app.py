@@ -74,14 +74,15 @@ components.html(
 )
 
 # CSSスタイル
+# CSSスタイル
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700&family=Noto+Sans:wght@300;400;500;600;700&display=swap');
+        @import url(\'https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700&family=Noto+Sans:wght@300;400;500;600;700&display=swap\');
         
         /* 全体のベーススタイル */
         .stApp { 
             background: #fcf8f8; 
-            font-family: 'Work Sans', 'Noto Sans', sans-serif; 
+            font-family: \'Work Sans\', \'Noto Sans\', sans-serif; 
         }
         
         /* タイトルとサブタイトル */
@@ -110,10 +111,28 @@ st.markdown("""
             margin: 24px 0;
             text-align: center;
             transition: all 0.3s ease;
+            position: relative; /* st.file_uploaderを重ねるために必要 */
+            overflow: hidden; /* はみ出しを隠す */
         }
         .upload-area:hover {
             border-color: #ea4f47;
             background: #fefcfc;
+        }
+        
+        /* st.file_uploader の見た目を完全に非表示にし、カスタムエリアに重ねる */
+        .stFileUploader > div > div {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0; /* 透明にする */
+            cursor: pointer;
+            z-index: 10; /* カスタムエリアの上に配置 */
+        }
+        /* st.file_uploader のデフォルトのラベルとヘルプテキストを非表示 */
+        .stFileUploader label, .stFileUploader p {
+            display: none !important;
         }
         
         /* カードスタイル */
@@ -250,15 +269,14 @@ st.markdown("""
         }
         
         /* ファイルアップローダーの改善 */
-        .stFileUploader > div > div {
-            background: white !important;
-            border: 2px dashed #e7d1d0 !important;
-            border-radius: 12px !important;
-            padding: 32px !important;
+        /* st.file_uploader のデフォルトのスタイルを上書きして、カスタムエリアにフィットさせる */
+        .stFileUploader {
+            /* Streamlitのデフォルトの余白をリセット */
+            margin-bottom: 0 !important;
         }
-        .stFileUploader > div > div:hover {
-            border-color: #ea4f47 !important;
-            background: #fefcfc !important;
+        .stFileUploader > div {
+            /* Streamlitのデフォルトの余白をリセット */
+            margin-bottom: 0 !important;
         }
         
         /* セクション見出し */
@@ -833,22 +851,23 @@ def match_bento_names(pdf_bento_list, master_df):
 # ──────────────────────────────────────────────
 
 # PDF → Excel 変換 ページ
-# PDF → Excel 変換 ページ
 if page_selection == "PDF → Excel 変換":
-    st.markdown('<div class="title">【数出表】PDF → Excelへの変換</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">PDFの数出表をExcelに変換し、詳細なクライアント情報も含めて一括処理します。</div>', unsafe_allow_html=True)
+    st.markdown(\'<div class="title">【数出表】PDF → Excelへの変換</div>\', unsafe_allow_html=True)
+    st.markdown(\'<div class="subtitle">PDFの数出表をExcelに変換し、詳細なクライアント情報も含めて一括処理します。</div>\', unsafe_allow_html=True)
 
     # カスタムアップロード領域の表示
-    st.markdown(create_upload_area(
-        "PDFファイルをドラッグ&ドロップ", 
-        "または下のボタンからファイルを選択してください"
-    ), unsafe_allow_html=True)
-
-    uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf", label_visibility="collapsed")
+    # st.file_uploader をカスタムエリアの中に配置し、label_visibility="hidden" でデフォルトのラベルを非表示にする
+    # これにより、カスタムエリアがクリック可能になり、ファイル選択ダイアログが開く
+    with st.container():
+        st.markdown(create_upload_area(
+            "PDFファイルをドラッグ&ドロップ", 
+            "またはここをクリックしてファイルを選択してください"
+        ), unsafe_allow_html=True)
+        uploaded_pdf = st.file_uploader("", type="pdf", label_visibility="hidden")
 
     if uploaded_pdf is not None and st.session_state.template_wb is not None:
         # ファイル情報表示
-        file_ext = uploaded_pdf.name.split('.')[-1].upper()
+        file_ext = uploaded_pdf.name.split(\".\")[-1].upper()
         file_size = len(uploaded_pdf.getvalue()) / 1024
         
         st.markdown(f"""
@@ -969,7 +988,7 @@ if page_selection == "PDF → Excel 変換":
                 st.markdown(create_progress_bar(100), unsafe_allow_html=True)
             
                 # 成功メッセージとダウンロードボタンを改善されたスタイルで表示
-                st.markdown('<div class="main-card">', unsafe_allow_html=True)
+                st.markdown(\'<div class="main-card">\', unsafe_allow_html=True)
                 st.success("✅ 処理が完了しました！")
                 
                 original_pdf_name = os.path.splitext(uploaded_pdf.name)[0]
