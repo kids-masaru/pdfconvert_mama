@@ -74,18 +74,119 @@ components.html(
 )
 
 # CSSスタイル
+# 既存のCSSスタイルを以下の内容に置き換え
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Roboto:wght@300;400;500&display=swap');
-        .stApp { background: #fff5e6; font-family: 'Inter', sans-serif; }
-        .title { font-size: 1.5rem; font-weight: 600; color: #333; margin-bottom: 5px; }
-        .subtitle { font-size: 0.9rem; color: #666; margin-bottom: 25px; }
-        .file-card { background: white; border-radius: 8px; padding: 12px 16px; margin: 15px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-        .file-icon { width: 36px; height: 36px; border-radius: 6px; background-color: #f44336; display: flex; align-items: center; justify-content: center; margin-right: 12px; color: white; }
-        .loading-spinner { width: 20px; height: 20px; border: 2px solid rgba(0,0,0,0.1); border-radius: 50%; border-top-color: #ff9933; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .download-card { background: white; border-radius: 8px; padding: 16px; margin: 20px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.08); }
-        .download-icon { width: 40px; height: 40px; border-radius: 8px; background-color: #ff9933; display: flex; align-items: center; justify-content: center; color: white; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Work+Sans:wght@400;500;700&display=swap');
+        
+        :root {
+            --primary: #ea4f47;
+            --primary-light: #f3e8e7;
+            --border: #e7d1d0;
+            --text: #1b0f0e;
+            --bg: #fcf8f8;
+        }
+        
+        .stApp {
+            background-color: var(--bg);
+            font-family: 'Work Sans', 'Inter', sans-serif;
+        }
+        
+        .stSidebar {
+            background-color: var(--bg) !important;
+            border-right: 1px solid var(--border);
+        }
+        
+        .title {
+            font-size: 28px !important;
+            font-weight: 700 !important;
+            color: var(--text);
+            margin-bottom: 5px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            font-size: 16px !important;
+            color: var(--text);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        /* ボタンスタイル */
+        .stButton>button {
+            background-color: var(--primary) !important;
+            color: white !important;
+            border-radius: 8px !important;
+            padding: 10px 20px !important;
+            font-weight: 700 !important;
+            border: none !important;
+            transition: all 0.3s;
+        }
+        
+        .stButton>button:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(234, 79, 71, 0.2) !important;
+        }
+        
+        .secondary-btn {
+            background-color: var(--primary-light) !important;
+            color: var(--text) !important;
+        }
+        
+        /* ファイルアップロードエリア */
+        .upload-area {
+            border: 2px dashed var(--border) !important;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            background: white;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            border-color: var(--primary) !important;
+            background-color: #fffcfc;
+        }
+        
+        /* カードスタイル */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        
+        /* プログレスバー */
+        .stProgress>div>div>div {
+            background-color: var(--primary) !important;
+        }
+        
+        /* ヘッダースタイル */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            border-bottom: 1px solid var(--border);
+            background: white;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--text);
+        }
+        
+        .logo-icon {
+            width: 24px;
+            height: 24px;
+            color: var(--primary);
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -706,13 +807,14 @@ if page_selection == "PDF → Excel 変換":
                 output_filename = f"{original_pdf_name}_Processed.xlsm"
                 excel_size = len(final_excel_bytes) / 1024
                 
-                st.download_button(
-                    label="📥 Excelファイルをダウンロード",
-                    data=final_excel_bytes,
-                    file_name=output_filename,
-                    mime="application/vnd.ms-excel.sheet.macroEnabled.12",
-                    help="処理されたExcelファイルをダウンロードします"
-                )
+                if processed:
+                    st.download_button(
+                        label="Excelファイルをダウンロード",
+                        data=final_excel_bytes,
+                        file_name=output_filename,
+                        mime="application/vnd.ms-excel.sheet.macroEnabled.12",
+                        use_container_width=True
+                    )
                 
                 st.info(f"ファイルサイズ: {excel_size:.1f} KB")
 
@@ -721,17 +823,41 @@ if page_selection == "PDF → Excel 変換":
 
 # マスタ設定 ページ
 elif page_selection == "マスタ設定":
-    st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">商品マスタのCSVファイルをアップロードして更新します。</div>', unsafe_allow_html=True)
-
-    master_csv_path = "商品マスタ一覧.csv"
-
-    st.markdown("#### 新しいマスタをアップロード")
-    uploaded_master_csv = st.file_uploader(
-        "商品マスタ一覧.csv をアップロードしてください",
-        type="csv",
-        help="ヘッダーには '商品予定名' と 'パン箱入数' を含めてください。"
-    )
+    # ヘッダー（PDFページと同じ）
+    
+    st.markdown('<div class="title">商品マスタ設定</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">商品マスタのCSVファイルをアップロードして更新します</div>', unsafe_allow_html=True)
+    
+    # ファイルアップロードエリア
+    with st.container():
+        uploaded_master_csv = st.file_uploader(
+            " ",
+            type="csv",
+            label_visibility="collapsed",
+            key="csv_uploader"
+        )
+        
+        if not uploaded_master_csv:
+            st.markdown("""
+                <div class="upload-area">
+                    <p style="font-size: 18px; font-weight: 700; margin-bottom: 10px;">CSVファイルをドラッグ＆ドロップ</p>
+                    <p style="margin-bottom: 20px; color: #666;">または</p>
+                    <div class="secondary-btn">CSVファイルを選択</div>
+                </div>
+            """, unsafe_allow_html=True)
+    
+    # マスタデータ表示
+    if 'master_df' in st.session_state and not st.session_state.master_df.empty:
+        with st.container():
+            st.markdown('<div style="font-weight: 600; margin: 25px 0 15px;">現在のマスタデータ</div>', unsafe_allow_html=True)
+            
+            # データフレームをカード内に表示
+            with st.expander("マスタデータを表示", expanded=True):
+                st.dataframe(
+                    st.session_state.master_df,
+                    use_container_width=True,
+                    height=300
+                )
 
     if uploaded_master_csv is not None:
         try:
