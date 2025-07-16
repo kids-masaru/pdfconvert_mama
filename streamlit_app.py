@@ -231,21 +231,23 @@ def extract_numbers_from_text(text, after_name=False):
     """テキストから数字を抽出"""
     numbers = []
     
+    # 半角数字のみを抽出する正規表現
+    number_pattern = r'\b\d+\b'
+    
     if after_name:
         words = text.split()
         name_ended = False
         
         for word in words:
-            if word.isdigit():
+            if re.match(r'^\d+$', word):  # 半角数字のみ
                 numbers.append(int(word))
                 name_ended = True
             elif name_ended:
                 break
     else:
-        words = text.split()
-        for word in words:
-            if word.isdigit():
-                numbers.append(int(word))
+        # 正規表現で半角数字を抽出
+        matches = re.findall(number_pattern, text)
+        numbers = [int(match) for match in matches]
     
     return numbers
 
