@@ -484,60 +484,109 @@ if page_selection == "PDF → Excel 変換":
         return matched
 
     def extract_client_names_from_pdf(pdf_file_obj):
-        """PDFから園名の下のクライアント名を抽出する"""
-        client_names = []
+    """PDFから園名の下のクライアント名を抽出する"""
+    client_names = []
     
-        try:
-            with pdfplumber.open(pdf_file_obj) as pdf:
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if not text:
+    try:
+        with pdfplumber.open(pdf_file_obj) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                st.write(f"📄 ページ {page_num + 1} を処理中...")
+                text = page.extract_text()
+                if not text:
+                    st.write("❌ このページからテキストを抽出できませんでした")
+                    continue
+                
+                # デバッグ：抽出されたテキストの一部を表示
+                st.write(f"🔍 抽出されたテキストの最初の500文字:")
+                st.code(text[:500])
+                
+                lines = text.split('\n')
+                st.write(f"📝 総行数: {len(lines)}")
+                
+                # 園名を探す
+                garden_found = False
+                garden_line_num = -1
+                for i, line in enumerate(lines):
+                    if '園名' in line:
+                        garden_found = True
+                        garden_line_num = i
+                        start_index = i + 1
+                        st.write(f"✅ 園名を発見！ 行番号: {i}, 内容: '{line}'")
+                        break
+                
+                if not garden_found:
+                    st.write("❌ 園名が見つかりませんでした")
+                    # 念のため最初の10行を表示
+                    st.write("📋 最初の10行:")
+                    for i, line in enumerate(lines[:10]):
+                        st.write(f"  {i}: '{line}'")
+                    continue
+                
+                # 園名の下の行を確認
+                st.write(f"🔍 園名の下の行を確認（行 {start_index} から）:")
+                processing_lines = []
+                for j in range(start_index, min(start_index + 20, len(lines))):  # 最大20行まで表示
+                    line = lines[j].strip()
+                    processing_lines.append(f"  {j}: '{line}'")
+                    
+                    # 10000が出てきたら終了
+                    if '10000' in line:
+                        st.write(f"🛑 10000を発見！ 行番号: {j}, 内容: '{line}'")
+                        break
+                
+                # 処理した行を表示
+                st.write("📋 処理対象の行:")
+                for line_info in processing_lines:
+                    st.write(line_info)
+                
+                # 実際の抽出処理
+                extracted_count = 0
+                for j in range(start_index, len(lines)):
+                    line = lines[j].strip()
+                    
+                    # 10000が出てきたら終了
+                    if '10000' in line:
+                        break
+                    
+                    # 空行はスキップ
+                    if not line:
                         continue
-                
-                    lines = text.split('\n')
-                
-                    # 園名を探す
-                    garden_found = False
-                    for i, line in enumerate(lines):
-                        if '園名' in line:
-                            garden_found = True
-                            # 園名の次の行から処理開始
-                            start_index = i + 1
-                            break
-                
-                    if not garden_found:
+                    
+                    # IDっぽい数字のみの行はスキップ（クライアント名のみ抽出）
+                    if line.isdigit():
+                        st.write(f"⏭️ 数字のみの行をスキップ: '{line}'")
                         continue
+                    
+                    # 数字で始まる行（ID+名前が混在）の場合、名前部分を抽出
+                    if re.match(r'^\d+', line):
+                        # 数字の後の文字列を抽出
+                        name_part = re.sub(r'^\d+\s*', '', line).strip()
+                        if name_part:
+                            client_names.append(name_part)
+                            extracted_count += 1
+                            st.write(f"✅ 抽出（ID+名前）: '{line}' → '{name_part}'")
+                    else:
+                        # 名前のみの行
+                        client_names.append(line)
+                        extracted_count += 1
+                        st.write(f"✅ 抽出（名前のみ）: '{line}'")
                 
-                    # 園名の下からクライアント名を抽出
-                    for j in range(start_index, len(lines)):
-                        line = lines[j].strip()
-                    
-                        # 10000が出てきたら終了
-                        if '10000' in line:
-                            break
-                    
-                        # 空行はスキップ
-                        if not line:
-                            continue
-                    
-                        # IDっぽい数字のみの行はスキップ（クライアント名のみ抽出）
-                        if line.isdigit():
-                            continue
-                    
-                        # 数字で始まる行（ID+名前が混在）の場合、名前部分を抽出
-                        if re.match(r'^\d+', line):
-                            # 数字の後の文字列を抽出
-                            name_part = re.sub(r'^\d+\s*', '', line).strip()
-                            if name_part:
-                                client_names.append(name_part)
-                        else:
-                            # 名前のみの行
-                        c    lient_names.append(line)
+                st.write(f"📊 このページから {extracted_count} 件のクライアント名を抽出しました")
     
-        except Exception as e:
-            st.error(f"クライアント名抽出中にエラーが発生しました: {e}")
+    except Exception as e:
+        st.error(f"クライアント名抽出中にエラーが発生しました: {e}")
+        st.exception(e)
     
-        return client_names
+    st.write(f"🎯 最終結果: 総 {len(client_names)} 件のクライアント名を抽出")
+    if client_names:
+        st.write("抽出されたクライアント名:")
+        for i, name in enumerate(client_names[:10]):  # 最初の10件を表示
+            st.write(f"  {i+1}: {name}")
+        if len(client_names) > 10:
+            st.write(f"  ... 他 {len(client_names) - 10} 件")
+    
+    return client_names
+
 
     # UI：PDFファイルアップロード
     uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf",
