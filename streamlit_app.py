@@ -74,7 +74,6 @@ components.html(
 )
 
 # CSSスタイル
-# CSSスタイル
 st.markdown("""
     <style>
         @import url(\'https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700&family=Noto+Sans:wght@300;400;500;600;700&display=swap\');
@@ -852,12 +851,10 @@ def match_bento_names(pdf_bento_list, master_df):
 
 # PDF → Excel 変換 ページ
 if page_selection == "PDF → Excel 変換":
-    st.markdown(\'<div class="title">【数出表】PDF → Excelへの変換</div>\', unsafe_allow_html=True)
-    st.markdown(\'<div class="subtitle">PDFの数出表をExcelに変換し、詳細なクライアント情報も含めて一括処理します。</div>\', unsafe_allow_html=True)
+    st.markdown("""<div class="title">【数出表】PDF → Excelへの変換</div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="subtitle">PDFの数出表をExcelに変換し、詳細なクライアント情報も含めて一括処理します。</div>""", unsafe_allow_html=True)
 
     # カスタムアップロード領域の表示
-    # st.file_uploader をカスタムエリアの中に配置し、label_visibility="hidden" でデフォルトのラベルを非表示にする
-    # これにより、カスタムエリアがクリック可能になり、ファイル選択ダイアログが開く
     with st.container():
         st.markdown(create_upload_area(
             "PDFファイルをドラッグ&ドロップ", 
@@ -867,7 +864,7 @@ if page_selection == "PDF → Excel 変換":
 
     if uploaded_pdf is not None and st.session_state.template_wb is not None:
         # ファイル情報表示
-        file_ext = uploaded_pdf.name.split(\".\")[-1].upper()
+        file_ext = uploaded_pdf.name.split(".")[-1].upper()
         file_size = len(uploaded_pdf.getvalue()) / 1024
         
         st.markdown(f"""
