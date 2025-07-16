@@ -133,9 +133,9 @@ def extract_detailed_client_info_from_pdf(pdf_file_obj):
                 for i in range(garden_row_idx + 1, len(rows)):
                     row = rows[i]
                     
-                    # 10000が出てきたら終了
+                    # 10001が出てきたら終了
                     row_text = ''.join(str(cell) for cell in row if cell)
-                    if '10000' in row_text:
+                    if '10001' in row_text:
                         break
                     
                     # 空行はスキップ
