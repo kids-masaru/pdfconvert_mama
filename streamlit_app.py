@@ -110,150 +110,125 @@ def extract_detailed_client_info_from_pdf(pdf_file_obj):
     try:
         with pdfplumber.open(pdf_file_obj) as pdf:
             for page_num, page in enumerate(pdf.pages):
-                text = page.extract_text()
-                if not text:
+                # 表形式のデータを抽出
+                rows = extract_text_with_layout(page)
+                if not rows:
                     continue
                 
-                lines = text.split('\n')
-                
-                # 園名を探す
-                start_index = -1
-                for i, line in enumerate(lines):
-                    if '園名' in line:
-                        start_index = i + 1
+                # 園名の位置を探す
+                garden_row_idx = -1
+                for i, row in enumerate(rows):
+                    row_text = ''.join(str(cell) for cell in row if cell)
+                    if '園名' in row_text:
+                        garden_row_idx = i
                         break
                 
-                if start_index == -1:
+                if garden_row_idx == -1:
                     continue
                 
-                # 園名の下からクライアント情報を抽出
-                i = start_index
-                while i < len(lines):
-                    line = lines[i].strip()
+                # 園名より下の行を処理
+                current_client_id = None
+                current_client_name = None
+                
+                for i in range(garden_row_idx + 1, len(rows)):
+                    row = rows[i]
                     
                     # 10000が出てきたら終了
-                    if '10000' in line:
+                    row_text = ''.join(str(cell) for cell in row if cell)
+                    if '10000' in row_text:
                         break
                     
                     # 空行はスキップ
-                    if not line:
-                        i += 1
+                    if not any(str(cell).strip() for cell in row):
                         continue
                     
-                    # IDで始まる行を検出
-                    if re.match(r'^\d+', line):
-                        client_info = extract_client_info_from_lines(lines, i)
-                        if client_info:
-                            client_data.append(client_info)
-                        i += client_info.get('lines_processed', 1) if client_info else 1
-                    else:
-                        i += 1
+                    # 左の列（1番目の列）をチェック
+                    if len(row) > 0 and row[0]:
+                        left_cell = str(row[0]).strip()
+                        
+                        # 数字だけの場合はID
+                        if re.match(r'^\d+$', left_cell):
+                            # 前のクライアントのデータを保存
+                            if current_client_id and current_client_name:
+                                client_info = extract_meal_numbers_from_row(rows, i-1, current_client_id, current_client_name)
+                                if client_info:
+                                    client_data.append(client_info)
+                            
+                            current_client_id = left_cell
+                            current_client_name = None
+                        
+                        # 数字以外の場合はクライアント名
+                        elif not re.match(r'^\d+$', left_cell) and current_client_id:
+                            current_client_name = left_cell
+                
+                # 最後のクライアントのデータを保存
+                if current_client_id and current_client_name:
+                    client_info = extract_meal_numbers_from_row(rows, len(rows)-1, current_client_id, current_client_name)
+                    if client_info:
+                        client_data.append(client_info)
     
     except Exception as e:
         st.error(f"クライアント情報抽出中にエラーが発生しました: {e}")
     
     return client_data
 
-def extract_client_info_from_lines(lines, start_idx):
-    """指定された行から1つのクライアント情報を抽出"""
+def extract_meal_numbers_from_row(rows, row_idx, client_id, client_name):
+    """指定された行とその周辺から給食の数を抽出"""
     client_info = {
-        'client_name': '',
+        'client_id': client_id,
+        'client_name': client_name,
         'student_meals': [],
-        'teacher_meals': [],
-        'lines_processed': 1
+        'teacher_meals': []
     }
     
-    current_line = lines[start_idx].strip()
+    # IDの行とクライアント名の行から数字を抽出
+    rows_to_check = []
     
-    # IDを抽出
-    id_match = re.match(r'^(\d+)', current_line)
-    if not id_match:
-        return None
+    # IDの行を探す
+    id_row_idx = -1
+    name_row_idx = -1
     
-    client_id = id_match.group(1)
-    remaining_text = current_line[len(client_id):].strip()
+    for i in range(max(0, row_idx - 3), min(len(rows), row_idx + 3)):
+        if i < len(rows) and len(rows[i]) > 0:
+            left_cell = str(rows[i][0]).strip()
+            if left_cell == client_id:
+                id_row_idx = i
+                rows_to_check.append(('id', i, rows[i]))
+            elif left_cell == client_name:
+                name_row_idx = i
+                rows_to_check.append(('name', i, rows[i]))
     
-    # 同じ行にクライアント名があるかチェック
-    if remaining_text and not remaining_text.isdigit():
-        client_info['client_name'] = extract_client_name_from_text(remaining_text)
-        client_info['student_meals'] = extract_numbers_from_text(remaining_text, after_name=True)
-        client_info['lines_processed'] = 1
-    else:
-        # 次の行にクライアント名がある場合
-        if start_idx + 1 < len(lines):
-            next_line = lines[start_idx + 1].strip()
-            if next_line and not next_line.isdigit():
-                client_info['client_name'] = extract_client_name_from_text(next_line)
-                client_info['teacher_meals'] = extract_numbers_from_text(next_line, after_name=True)
-                client_info['lines_processed'] = 2
-        
-        # IDの行から園児の給食の数を抽出
-        if remaining_text:
-            client_info['student_meals'] = extract_numbers_from_text(remaining_text)
+    # 数字を抽出
+    all_numbers = []
     
-    # 追加の行もチェック
-    check_lines = 3
-    for offset in range(1, min(check_lines + 1, len(lines) - start_idx)):
-        check_line = lines[start_idx + offset].strip()
-        
-        if check_line and not check_line.replace(' ', '').isdigit() and not has_numbers(check_line):
-            break
-        
-        if has_numbers(check_line):
-            additional_numbers = extract_numbers_from_text(check_line)
-            
-            if len(client_info['student_meals']) < 3:
-                needed = 3 - len(client_info['student_meals'])
-                client_info['student_meals'].extend(additional_numbers[:needed])
-                additional_numbers = additional_numbers[needed:]
-            
-            client_info['teacher_meals'].extend(additional_numbers)
-            
-            if offset >= client_info['lines_processed']:
-                client_info['lines_processed'] = offset + 1
+    for row_type, idx, row in rows_to_check:
+        # 左の列（0番目）以外の列から数字を抽出
+        for col_idx in range(1, len(row)):
+            cell = str(row[col_idx]).strip()
+            if cell and re.match(r'^\d+$', cell):
+                all_numbers.append({
+                    'number': int(cell),
+                    'row_type': row_type,
+                    'col_idx': col_idx
+                })
+            elif cell and not re.match(r'^\d+$', cell) and cell != '':
+                # 数字以外の文字が出てきたらその行はここで終了
+                break
+    
+    # 園児の給食の数と先生の給食の数に分ける
+    # IDの行の数字は園児の給食の数
+    # クライアント名の行の数字は先生の給食の数
+    
+    id_numbers = [item['number'] for item in all_numbers if item['row_type'] == 'id']
+    name_numbers = [item['number'] for item in all_numbers if item['row_type'] == 'name']
+    
+    # 園児の給食の数（最大3つ）
+    client_info['student_meals'] = id_numbers[:3]
+    
+    # 先生の給食の数（最大2つ）
+    client_info['teacher_meals'] = name_numbers[:2]
     
     return client_info
-
-def extract_client_name_from_text(text):
-    """テキストからクライアント名を抽出"""
-    name_parts = []
-    words = text.split()
-    
-    for word in words:
-        if not word.isdigit():
-            name_parts.append(word)
-        else:
-            break
-    
-    return ' '.join(name_parts).strip()
-
-def extract_numbers_from_text(text, after_name=False):
-    """テキストから数字を抽出"""
-    numbers = []
-    
-    # 半角数字のみを抽出する正規表現
-    number_pattern = r'\b\d+\b'
-    
-    if after_name:
-        words = text.split()
-        name_ended = False
-        
-        for word in words:
-            if re.match(r'^\d+$', word):  # 半角数字のみ
-                numbers.append(int(word))
-                name_ended = True
-            elif name_ended:
-                break
-    else:
-        # 正規表現で半角数字を抽出
-        matches = re.findall(number_pattern, text)
-        numbers = [int(match) for match in matches]
-    
-    return numbers
-
-def has_numbers(text):
-    """テキストに数字が含まれているかチェック"""
-    return any(char.isdigit() for char in text)
 
 def export_detailed_client_data_to_dataframe(client_data):
     """詳細クライアント情報をDataFrameに変換"""
