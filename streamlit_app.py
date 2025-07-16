@@ -587,7 +587,6 @@ if page_selection == "PDF → Excel 変換":
     
     return client_names
 
-
     # UI：PDFファイルアップロード
     uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf",
                                     help="ここにPDFファイルをドラッグ＆ドロップするか、クリックして選択してください。")
