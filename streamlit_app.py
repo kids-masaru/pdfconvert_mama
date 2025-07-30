@@ -17,6 +17,37 @@ st.set_page_config(
     page_icon="./static/favicon.ico",
     layout="centered",
 )
+# デバッグ用：現在の作業ディレクトリとファイル一覧を確認
+import os
+import streamlit as st
+
+# 現在の作業ディレクトリを表示
+current_dir = os.getcwd()
+st.write(f"現在の作業ディレクトリ: {current_dir}")
+
+# 現在のディレクトリ内のファイル一覧を表示
+files_in_current_dir = os.listdir(current_dir)
+st.write("現在のディレクトリ内のファイル:")
+for file in files_in_current_dir:
+    st.write(f"  - {file}")
+
+# template.xlsmの存在確認
+template_exists = os.path.exists("template.xlsm")
+st.write(f"template.xlsm が見つかるか: {template_exists}")
+
+# スクリプトファイルの場所を確認
+script_dir = os.path.dirname(os.path.abspath(__file__))
+st.write(f"スクリプトファイルの場所: {script_dir}")
+
+# スクリプトと同じディレクトリ内のファイル一覧
+if script_dir != current_dir:
+    st.write("スクリプトと同じディレクトリ内のファイル:")
+    try:
+        script_files = os.listdir(script_dir)
+        for file in script_files:
+            st.write(f"  - {file}")
+    except Exception as e:
+        st.write(f"エラー: {e}")
 
 # --- Streamlit Session Stateの初期化 ---
 if 'master_df' not in st.session_state:
