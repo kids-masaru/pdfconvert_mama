@@ -18,44 +18,15 @@ st.set_page_config(
     layout="centered",
 )
 
-# --- ファイルパスの設定 ---
-# Streamlit Cloud環境で正しく動作するように、スクリプトのディレクトリを基準にパスを構築
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_PATH = os.path.join(BASE_DIR, "template.xlsm")
-MASTER_CSV_PATH = os.path.join(BASE_DIR, "商品マスタ一覧.csv")
-
-# --- デバッグ情報 ---
-# Streamlit Cloud上でファイルが見つからない問題のデバッグ用
-# 問題が解決したらこの部分は削除してOKです
-st.write("=== デバッグ情報 ===")
-st.write(f"現在の作業ディレクトリ: {os.getcwd()}")
-st.write(f"スクリプトのベースディレクトリ (BASE_DIR): {BASE_DIR}")
-st.write("ベースディレクトリ内のファイル一覧:")
-try:
-    if os.path.isdir(BASE_DIR):
-        for file in os.listdir(BASE_DIR):
-            st.write(f"  - {file}")
-    else:
-        st.write(f"  (BASE_DIR '{BASE_DIR}' はディレクトリではありません)")
-except Exception as e:
-    st.write(f"  ディレクトリ一覧の取得中にエラー: {e}")
-st.write(f"template.xlsm のフルパス: {TEMPLATE_PATH}")
-st.write(f"template.xlsm 存在確認: {os.path.exists(TEMPLATE_PATH)}")
-st.write(f"商品マスタ一覧.csv のフルパス: {MASTER_CSV_PATH}")
-st.write(f"商品マスタ一覧.csv 存在確認: {os.path.exists(MASTER_CSV_PATH)}")
-st.write("==================")
-
-
 # --- Streamlit Session Stateの初期化 ---
 if 'master_df' not in st.session_state:
+    master_csv_path = "商品マスタ一覧.csv"
     initial_master_df = None
-    # ✅ 修正: フルパスを使用
-    if os.path.exists(MASTER_CSV_PATH):
+    if os.path.exists(master_csv_path):
         encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis', 'euc-jp', 'iso-2022-jp']
         for encoding in encodings:
             try:
-                # ✅ 修正: フルパスを使用
-                temp_df = pd.read_csv(MASTER_CSV_PATH, encoding=encoding)
+                temp_df = pd.read_csv(master_csv_path, encoding=encoding)
                 if not temp_df.empty:
                     initial_master_df = temp_df
                     st.success(f"既存のマスタデータを {encoding} エンコーディングで読み込みました。")
@@ -63,12 +34,10 @@ if 'master_df' not in st.session_state:
             except (UnicodeDecodeError, pd.errors.EmptyDataError):
                 continue
             except Exception as e:
-                # ✅ 修正: フルパスを表示
-                st.warning(f"既存マスタCSV ({MASTER_CSV_PATH}) を {encoding} で読み込み中にエラーが発生しました: {e}")
+                st.warning(f"既存マスタCSV ({master_csv_path}) を {encoding} で読み込み中にエラーが発生しました: {e}")
                 continue
     if initial_master_df is None:
-        # ✅ 修正: フルパスを表示
-        st.warning(f"マスタデータ '{MASTER_CSV_PATH}' が見つからないか、読み込めませんでした。マスタ設定ページでアップロードしてください。")
+        st.warning(f"マスタデータ '{master_csv_path}' が見つからないか、読み込めませんでした。マスタ設定ページでアップロードしてください。")
         initial_master_df = pd.DataFrame(columns=['商品予定名', 'パン箱入数'])
     st.session_state.master_df = initial_master_df
 
@@ -77,22 +46,20 @@ if 'template_wb_loaded' not in st.session_state:
     st.session_state.template_wb_loaded = False
     st.session_state.template_wb = None
 
+template_path = "template.xlsm"
+
 if not st.session_state.template_wb_loaded:
-    # ✅ 修正: フルパスを使用
-    if not os.path.exists(TEMPLATE_PATH):
-        st.error(f"テンプレートファイル '{TEMPLATE_PATH}' が見つかりません。")
+    if not os.path.exists(template_path):
+        st.error(f"テンプレートファイル '{template_path}' が見つかりません。")
         st.stop()
     
     try:
-        # ✅ 修正: フルパスを使用
-        st.session_state.template_wb = load_workbook(TEMPLATE_PATH, keep_vba=True)
+        st.session_state.template_wb = load_workbook(template_path, keep_vba=True)
         st.session_state.template_wb_loaded = True
-        st.success(f"テンプレートファイル '{TEMPLATE_PATH}' を読み込みました。")
+        st.success(f"テンプレートファイル '{template_path}' を読み込みました。")
     except Exception as e:
-        # ✅ 修正: フルパスを表示
-        st.error(f"テンプレートファイル '{TEMPLATE_PATH}' の読み込み中にエラーが発生しました: {e}")
+        st.error(f"テンプレートファイル '{template_path}' の読み込み中にエラーが発生しました: {e}")
         st.stop()
-
 
 # PWA用HTML埋め込み
 components.html(
@@ -757,6 +724,8 @@ elif page_selection == "マスタ設定":
     st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">商品マスタのCSVファイルをアップロードして更新します。</div>', unsafe_allow_html=True)
 
+    master_csv_path = "商品マスタ一覧.csv"
+
     st.markdown("#### 新しいマスタをアップロード")
     uploaded_master_csv = st.file_uploader(
         "商品マスタ一覧.csv をアップロードしてください",
@@ -789,19 +758,18 @@ elif page_selection == "マスタ設定":
                 st.session_state.master_df = new_master_df
                 
                 try:
-                    # ✅ 修正: フルパスを使用して保存
-                    new_master_df.to_csv(MASTER_CSV_PATH, index=False, encoding='utf-8-sig')
-                    st.success(f"✅ マスタデータを更新し、'{MASTER_CSV_PATH}' に保存しました。")
+                    new_master_df.to_csv(master_csv_path, index=False, encoding='utf-8-sig')
+                    st.success(f"✅ マスタデータを更新し、'{master_csv_path}' に保存しました。")
                 except Exception as e:
-                    st.error(f"マスタデータの保存中にエラーが発生しました: {e}")
-                    st.warning("セッション内のデータは更新されましたが、ファイルの永続的な保存には失敗しました。")
+                    st.error(f"マスタファイル保存中にエラー: {e}")
+            else:
+                st.error("CSVファイルを正しく読み込めませんでした。")
 
         except Exception as e:
-            st.error(f"マスタファイルの処理中に予期せぬエラーが発生しました: {e}")
+            st.error(f"マスタ更新処理中にエラー: {e}")
 
-    st.markdown("---")
     st.markdown("#### 現在のマスタデータ")
     if 'master_df' in st.session_state and not st.session_state.master_df.empty:
-        st.dataframe(st.session_state.master_df)
+        st.dataframe(st.session_state.master_df, use_container_width=True)
     else:
-        st.info("マスタデータが読み込まれていません。")
+        st.warning("現在、マスタデータが読み込まれていません。")
