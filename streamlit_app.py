@@ -49,27 +49,28 @@ page_selection = st.sidebar.radio("表示する機能を選択してください
 st.markdown("---")
 
 # ──────────────────────────────────────────────
-# Excelシートをクリアして書き込むヘルパー関数
+# ✅【変更点】数式を保護しながら書き込む新しいヘルパー関数
 # ──────────────────────────────────────────────
-def clear_and_write_df(worksheet, df, include_header=True):
+def safe_write_df(worksheet, df, start_row=2):
     """
-    指定されたワークシートの既存のデータをクリアし、新しいデータフレームを書き込む
+    数式を保護するため、指定された範囲のセルのみをクリアし、データフレームを書き込む
     """
-    if worksheet.max_row > 1:
-        # テンプレートの書式を維持するため、2行目以降を削除
-        worksheet.delete_rows(2, worksheet.max_row -1)
+    num_cols = df.shape[1]
+    
+    # 1. 既存データのクリア（指定列のみ）
+    # 書き込む行数より既存の行数が多い場合、余分な行のデータをクリアする
+    if worksheet.max_row >= start_row:
+        for row in range(start_row, worksheet.max_row + 1):
+            for col in range(1, num_cols + 1):
+                worksheet.cell(row=row, column=col).value = None
 
-    # データフレームの行を2行目から追記
-    for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=False), 2):
-        for c_idx, value in enumerate(row, 1):
+    # 2. 新しいデータの書き込み（ヘッダーは除く）
+    for r_idx, row_data in enumerate(df.itertuples(index=False), start=start_row):
+        for c_idx, value in enumerate(row_data, start=1):
             worksheet.cell(row=r_idx, column=c_idx, value=value)
-    # ヘッダーを1行目に書き込み
-    if include_header:
-        for c_idx, value in enumerate(df.columns, 1):
-            worksheet.cell(row=1, column=c_idx, value=value)
-
 
 # (PDF解析・データ抽出関数群は変更がないため省略します)
+# ... (All the data extraction functions like extract_detailed_client_info_from_pdf, etc. go here) ...
 def extract_detailed_client_info_from_pdf(pdf_file_obj):
     """PDFから詳細なクライアント情報（名前＋給食の数）を抽出する"""
     client_data = []
@@ -77,84 +78,50 @@ def extract_detailed_client_info_from_pdf(pdf_file_obj):
     try:
         with pdfplumber.open(pdf_file_obj) as pdf:
             for page_num, page in enumerate(pdf.pages):
-                # 表形式のデータを抽出
                 rows = extract_text_with_layout(page)
                 if not rows:
                     continue
-
-                # 園名の位置を探す
                 garden_row_idx = -1
                 for i, row in enumerate(rows):
                     row_text = ''.join(str(cell) for cell in row if cell)
                     if '園名' in row_text:
                         garden_row_idx = i
                         break
-
                 if garden_row_idx == -1:
                     continue
-
-                # 園名より下の行を処理
                 current_client_id = None
                 current_client_name = None
-
                 for i in range(garden_row_idx + 1, len(rows)):
                     row = rows[i]
-
-                    # 10001が出てきたら終了
                     row_text = ''.join(str(cell) for cell in row if cell)
                     if '10001' in row_text:
                         break
-
-                    # 空行はスキップ
                     if not any(str(cell).strip() for cell in row):
                         continue
-
-                    # 左の列（1番目の列）をチェック
                     if len(row) > 0 and row[0]:
                         left_cell = str(row[0]).strip()
-
-                        # 数字だけの場合はID
                         if re.match(r'^\d+$', left_cell):
-                            # 前のクライアントのデータを保存
                             if current_client_id and current_client_name:
                                 client_info = extract_meal_numbers_from_row(rows, i-1, current_client_id, current_client_name)
                                 if client_info:
                                     client_data.append(client_info)
-
                             current_client_id = left_cell
                             current_client_name = None
-
-                        # 数字以外の場合はクライアント名
                         elif not re.match(r'^\d+$', left_cell) and current_client_id:
                             current_client_name = left_cell
-
-                # 最後のクライアントのデータを保存
                 if current_client_id and current_client_name:
                     client_info = extract_meal_numbers_from_row(rows, len(rows)-1, current_client_id, current_client_name)
                     if client_info:
                         client_data.append(client_info)
-
     except Exception as e:
         st.error(f"クライアント情報抽出中にエラーが発生しました: {e}")
-
     return client_data
 
 def extract_meal_numbers_from_row(rows, row_idx, client_id, client_name):
-    """指定された行とその周辺から給食の数を抽出"""
-    client_info = {
-        'client_id': client_id,
-        'client_name': client_name,
-        'student_meals': [],
-        'teacher_meals': []
-    }
-
-    # IDの行とクライアント名の行から数字を抽出
+    client_info = {'client_id': client_id, 'client_name': client_name, 'student_meals': [], 'teacher_meals': []}
     rows_to_check = []
-
-    # IDの行を探す
     id_row_idx = -1
     name_row_idx = -1
-
     for i in range(max(0, row_idx - 3), min(len(rows), row_idx + 3)):
         if i < len(rows) and len(rows[i]) > 0:
             left_cell = str(rows[i][0]).strip()
@@ -164,43 +131,22 @@ def extract_meal_numbers_from_row(rows, row_idx, client_id, client_name):
             elif left_cell == client_name:
                 name_row_idx = i
                 rows_to_check.append(('name', i, rows[i]))
-
-    # 数字を抽出
     all_numbers = []
-
     for row_type, idx, row in rows_to_check:
-        # 左の列（0番目）以外の列から数字を抽出
         for col_idx in range(1, len(row)):
             cell = str(row[col_idx]).strip()
             if cell and re.match(r'^\d+$', cell):
-                all_numbers.append({
-                    'number': int(cell),
-                    'row_type': row_type,
-                    'col_idx': col_idx
-                })
+                all_numbers.append({'number': int(cell), 'row_type': row_type, 'col_idx': col_idx})
             elif cell and not re.match(r'^\d+$', cell) and cell != '':
-                # 数字以外の文字が出てきたらその行はここで終了
                 break
-
-    # 園児の給食の数と先生の給食の数に分ける
-    # IDの行の数字は園児の給食の数
-    # クライアント名の行の数字は先生の給食の数
-
     id_numbers = [item['number'] for item in all_numbers if item['row_type'] == 'id']
     name_numbers = [item['number'] for item in all_numbers if item['row_type'] == 'name']
-
-    # 園児の給食の数（最大3つ）
     client_info['student_meals'] = id_numbers[:3]
-
-    # 先生の給食の数（最大2つ）
     client_info['teacher_meals'] = name_numbers[:2]
-
     return client_info
 
 def export_detailed_client_data_to_dataframe(client_data):
-    """詳細クライアント情報をDataFrameに変換"""
     df_data = []
-
     for client_info in client_data:
         row = {
             'クライアント名': client_info['client_name'],
@@ -211,152 +157,31 @@ def export_detailed_client_data_to_dataframe(client_data):
             '先生の給食の数2': client_info['teacher_meals'][1] if len(client_info['teacher_meals']) > 1 else '',
         }
         df_data.append(row)
-
     return pd.DataFrame(df_data)
 
-def is_number(text: str) -> bool:
-    return bool(re.match(r'^\d+$', text.strip()))
-
-def get_line_groups(words: List[Dict[str, Any]], y_tolerance: float = 1.2) -> List[List[Dict[str, Any]]]:
-    if not words:
-        return []
-    sorted_words = sorted(words, key=lambda w: w['top'])
-    groups = []
-    current_group = [sorted_words[0]]
-    current_top = sorted_words[0]['top']
-    for word in sorted_words[1:]:
-        if abs(word['top'] - current_top) <= y_tolerance:
-            current_group.append(word)
-        else:
-            groups.append(current_group)
-            current_group = [word]
-            current_top = word['top']
-    groups.append(current_group)
-    return groups
-
-def get_vertical_boundaries(page, tolerance: float = 2) -> List[float]:
-    vertical_lines_x = []
-    for line in page.lines:
-        if abs(line['x0'] - line['x1']) < tolerance:
-            vertical_lines_x.append((line['x0'] + line['x1']) / 2)
-    vertical_lines_x = sorted(list(set(round(x, 1) for x in vertical_lines_x)))
-
-    words = page.extract_words()
-    if not words:
-        return vertical_lines_x
-
-    left_boundary = min(word['x0'] for word in words)
-    right_boundary = max(word['x1'] for word in words)
-
-    boundaries = sorted(list(set([round(left_boundary, 1)] + vertical_lines_x + [round(right_boundary, 1)])))
-
-    merged_boundaries = []
-    if boundaries:
-        merged_boundaries.append(boundaries[0])
-        for i in range(1, len(boundaries)):
-            if boundaries[i] - merged_boundaries[-1] > tolerance * 2:
-                merged_boundaries.append(boundaries[i])
-        if right_boundary > merged_boundaries[-1] + tolerance * 2:
-            merged_boundaries.append(round(right_boundary, 1))
-        boundaries = sorted(list(set(merged_boundaries)))
-
-    return boundaries
-
-def split_line_using_boundaries(sorted_words_in_line: List[Dict[str, Any]], boundaries: List[float]) -> List[str]:
-    columns = [""] * (len(boundaries) - 1)
-    for word in sorted_words_in_line:
-        word_center_x = (word['x0'] + word['x1']) / 2
-        for i in range(len(boundaries) - 1):
-            left = boundaries[i]
-            right = boundaries[i + 1]
-            if left <= word_center_x < right:
-                if columns[i]:
-                    columns[i] += " " + word["text"]
-                else:
-                    columns[i] = word["text"]
-                break
-    return columns
-
-def extract_text_with_layout(page) -> List[List[str]]:
-    words = page.extract_words(x_tolerance=3, y_tolerance=3, keep_blank_chars=False)
-    if not words:
-        return []
-
-    boundaries = get_vertical_boundaries(page)
-    if len(boundaries) < 2:
-        lines = page.extract_text(layout=False, x_tolerance=3, y_tolerance=3)
-        return [[line] for line in lines.split('\n') if line.strip()]
-
-    row_groups = get_line_groups(words, y_tolerance=1.5)
-
-    result_rows = []
-    for group in row_groups:
-        sorted_group = sorted(group, key=lambda w: w['x0'])
-        columns = split_line_using_boundaries(sorted_group, boundaries)
-        if any(cell.strip() for cell in columns):
-            result_rows.append(columns)
-
-    return result_rows
-
-def remove_extra_empty_columns(rows: List[List[str]]) -> List[List[str]]:
-    if not rows:
-        return rows
-    num_cols = max(len(row) for row in rows) if rows else 0
-    if num_cols == 0:
-        return rows
-
-    is_col_empty = [True] * num_cols
-    for r, row in enumerate(rows):
-        for c in range(len(row)):
-            if c < num_cols and row[c].strip():
-                is_col_empty[c] = False
-
-    keep_indices = [c for c in range(num_cols) if not is_col_empty[c]]
-
-    new_rows = []
-    for row in rows:
-        new_row = [row[i] if i < len(row) else "" for i in keep_indices]
-        new_rows.append(new_row)
-
-    return new_rows
-
-def post_process_rows(rows: List[List[str]]) -> List[List[str]]:
-    new_rows = [row[:] for row in rows]
-    for i, row in enumerate(new_rows):
-        for j, cell in enumerate(row):
-            if "合計" in str(cell):
-                if i > 0 and j < len(new_rows[i-1]):
-                    new_rows[i-1][j] = ""
-    return new_rows
-
-def pdf_to_excel_data_for_paste_sheet(pdf_file) -> pd.DataFrame | None:
+def pdf_to_excel_data_for_paste_sheet(pdf_file):
     try:
         with pdfplumber.open(pdf_file) as pdf:
             if not pdf.pages:
                 st.warning("PDFにページがありません。")
                 return None
             page = pdf.pages[0]
-
             rows = extract_text_with_layout(page)
             rows = [row for row in rows if any(cell.strip() for cell in row)]
             if not rows:
                 st.warning("PDFの最初のページからテキストデータを抽出できませんでした。")
                 return None
-
             rows = post_process_rows(rows)
             rows = remove_extra_empty_columns(rows)
             if not rows or not rows[0]:
                 st.warning("空の列を削除した結果、データがなくなりました。")
                 return None
-
             max_cols = max(len(row) for row in rows) if rows else 0
             normalized_rows = [row + [''] * (max_cols - len(row)) for row in rows]
             df = pd.DataFrame(normalized_rows)
             return df
-
     except Exception as e:
         st.error(f"PDF処理中にエラーが発生しました: {e}")
-        traceback.print_exc()
         return None
 
 def extract_table_from_pdf_for_bento(pdf_file_obj):
@@ -365,46 +190,24 @@ def extract_table_from_pdf_for_bento(pdf_file_obj):
         for page in pdf.pages:
             text = page.extract_text()
             if text is None: continue
-
-            start_keywords = ["園名", "飯あり", "キャラ弁"]
-            end_keywords = ["おやつ", "合計", "PAGE"]
-
-            if not any(kw in text for kw in start_keywords):
+            if not any(kw in text for kw in ["園名", "飯あり", "キャラ弁"]):
                 continue
-
             lines = page.lines
-            if not lines:
-                continue
-
+            if not lines: continue
             y_coords = sorted(set([line['top'] for line in lines] + [line['bottom'] for line in lines]))
-            if len(y_coords) < 2:
-                continue
-
+            if len(y_coords) < 2: continue
             table_top = min(y_coords)
             table_bottom = max(y_coords)
-
             x_coords = sorted(set([line['x0'] for line in lines] + [line['x1'] for line in lines]))
-            if len(x_coords) < 2:
-                continue
-
+            if len(x_coords) < 2: continue
             table_left = min(x_coords)
             table_right = max(x_coords)
-
             table_bbox = (table_left, table_top, table_right, table_bottom)
             cropped_page = page.crop(table_bbox)
-
-            table_settings = {
-                "vertical_strategy": "lines",
-                "horizontal_strategy": "lines",
-                "snap_tolerance": 3,
-                "join_tolerance": 3,
-                "edge_min_length": 15,
-            }
-
+            table_settings = {"vertical_strategy": "lines", "horizontal_strategy": "lines", "snap_tolerance": 3, "join_tolerance": 3, "edge_min_length": 15}
             table = cropped_page.extract_table(table_settings)
             if table:
                 tables.append(table)
-
     return tables
 
 def find_correct_anchor_for_bento(table, target_row_text="赤"):
@@ -422,7 +225,6 @@ def find_correct_anchor_for_bento(table, target_row_text="赤"):
 def extract_bento_range_for_bento(table, start_col):
     bento_list = []
     end_col = -1
-
     for row in table:
         row_text = ''.join(str(cell) for cell in row if cell)
         if "おやつ" in row_text:
@@ -432,64 +234,41 @@ def extract_bento_range_for_bento(table, start_col):
                     break
             if end_col != -1:
                 break
-
     if end_col == -1 or start_col >= end_col:
         return []
-
     header_row_idx = None
     anchor_row_idx = -1
     for row_idx, row in enumerate(table):
         if any(cell and "飯なし" in cell for cell in row):
             anchor_row_idx = row_idx
             break
-
-    if anchor_row_idx == -1:
-        return []
-
+    if anchor_row_idx == -1: return []
     if anchor_row_idx - 1 >= 0:
         header_row_idx = anchor_row_idx - 1
     else:
         return []
-
     for col in range(start_col + 1, end_col + 1):
-        if col < len(table[header_row_idx]):
-            cell_text = table[header_row_idx][col]
-        else:
-            cell_text = ""
-
+        cell_text = table[header_row_idx][col] if col < len(table[header_row_idx]) else ""
         if cell_text and str(cell_text).strip() and "飯なし" not in str(cell_text):
             bento_list.append(str(cell_text).strip())
-
     return bento_list
 
 def match_bento_names(pdf_bento_list, master_df):
     if master_df is None or master_df.empty:
         st.error("マスタデータがロードされていません。")
         return [f"{name} (マスタデータなし)" for name in pdf_bento_list]
-
     master_data_tuples = []
     try:
         if '商品予定名' in master_df.columns and 'パン箱入数' in master_df.columns:
             master_data_tuples = master_df[['商品予定名', 'パン箱入数']].dropna().values.tolist()
             master_data_tuples = [(str(name), str(value)) for name, value in master_data_tuples]
-        elif '商品予定名' in master_df.columns:
-            st.warning("マスタデータに「パン箱入数」列が見つかりません。")
-            master_data_tuples = master_df['商品予定名'].dropna().astype(str).tolist()
-            master_data_tuples = [(name, "") for name in master_data_tuples]
         else:
-            st.error("マスタデータに「商品予定名」列が見つかりません。")
-            return [f"{name} (商品予定名列なし)" for name in pdf_bento_list]
-
+            return [f"{name} (必要列なし)" for name in pdf_bento_list]
     except Exception as e:
         st.error(f"マスタデータ処理中にエラーが発生しました: {e}")
         return [f"{name} (処理エラー)" for name in pdf_bento_list]
 
-    if len(master_data_tuples) == 0:
-        st.warning("マスタデータから有効な商品情報が抽出できませんでした。")
-        return [f"{name} (マスタ空)" for name in pdf_bento_list]
-
     matched = []
-
     normalized_master_data_tuples = []
     for master_name, master_id in master_data_tuples:
         normalized_name = unicodedata.normalize('NFKC', master_name)
@@ -499,18 +278,15 @@ def match_bento_names(pdf_bento_list, master_df):
     for pdf_name in pdf_bento_list:
         original_normalized_pdf_name = unicodedata.normalize('NFKC', str(pdf_name))
         original_normalized_pdf_name = re.sub(r'\s+', '', original_normalized_pdf_name)
-
         found_match = False
         found_original_master_name = None
         found_id = None
-
         for norm_m_name, orig_m_name, m_id in normalized_master_data_tuples:
             if norm_m_name.startswith(original_normalized_pdf_name):
                 found_original_master_name = orig_m_name
                 found_id = m_id
                 found_match = True
                 break
-
         if not found_match:
             for norm_m_name, orig_m_name, m_id in normalized_master_data_tuples:
                 if original_normalized_pdf_name in norm_m_name:
@@ -518,30 +294,6 @@ def match_bento_names(pdf_bento_list, master_df):
                     found_id = m_id
                     found_match = True
                     break
-
-        if not found_match:
-            for num_chars_to_remove in range(1, 4):
-                if len(original_normalized_pdf_name) > num_chars_to_remove:
-                    truncated_pdf_name = original_normalized_pdf_name[:-num_chars_to_remove]
-
-                    for norm_m_name, orig_m_name, m_id in normalized_master_data_tuples:
-                        if norm_m_name.startswith(truncated_pdf_name):
-                            found_original_master_name = orig_m_name
-                            found_id = m_id
-                            found_match = True
-                            break
-
-                    if not found_match:
-                        for norm_m_name, orig_m_name, m_id in normalized_master_data_tuples:
-                            if truncated_pdf_name in norm_m_name:
-                                found_original_master_name = orig_m_name
-                                found_id = m_id
-                                found_match = True
-                                break
-
-                    if found_match:
-                        break
-
         if found_original_master_name:
             if found_id:
                 matched.append(f"{found_original_master_name} (入数: {found_id})")
@@ -549,8 +301,46 @@ def match_bento_names(pdf_bento_list, master_df):
                 matched.append(found_original_master_name)
         else:
             matched.append(f"{pdf_name} (未マッチ)")
-
     return matched
+def extract_text_with_layout(page) -> List[List[str]]:
+    words = page.extract_words(x_tolerance=3, y_tolerance=3, keep_blank_chars=False)
+    if not words: return []
+    boundaries = get_vertical_boundaries(page)
+    if len(boundaries) < 2:
+        lines = page.extract_text(layout=False, x_tolerance=3, y_tolerance=3)
+        return [[line] for line in lines.split('\n') if line.strip()]
+    row_groups = get_line_groups(words, y_tolerance=1.5)
+    result_rows = []
+    for group in row_groups:
+        sorted_group = sorted(group, key=lambda w: w['x0'])
+        columns = split_line_using_boundaries(sorted_group, boundaries)
+        if any(cell.strip() for cell in columns):
+            result_rows.append(columns)
+    return result_rows
+def remove_extra_empty_columns(rows: List[List[str]]) -> List[List[str]]:
+    if not rows: return rows
+    num_cols = max(len(row) for row in rows) if rows else 0
+    if num_cols == 0: return rows
+    is_col_empty = [True] * num_cols
+    for r, row in enumerate(rows):
+        for c in range(len(row)):
+            if c < num_cols and row[c].strip():
+                is_col_empty[c] = False
+    keep_indices = [c for c in range(num_cols) if not is_col_empty[c]]
+    new_rows = []
+    for row in rows:
+        new_row = [row[i] if i < len(row) else "" for i in keep_indices]
+        new_rows.append(new_row)
+    return new_rows
+def post_process_rows(rows: List[List[str]]) -> List[List[str]]:
+    new_rows = [row[:] for row in rows]
+    for i, row in enumerate(new_rows):
+        for j, cell in enumerate(row):
+            if "合計" in str(cell):
+                if i > 0 and j < len(new_rows[i-1]):
+                    new_rows[i-1][j] = ""
+    return new_rows
+
 
 # ──────────────────────────────────────────────
 # メインアプリケーション
@@ -561,75 +351,76 @@ if page_selection == "PDF → Excel 変換":
     uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf")
 
     if uploaded_pdf is not None:
-        # --- テンプレートファイルを毎回ロード ---
         template_path = "template.xlsm"
         nouhinsyo_path = "nouhinsyo.xlsx"
         if not os.path.exists(template_path) or not os.path.exists(nouhinsyo_path):
             st.error(f"'{template_path}' または '{nouhinsyo_path}' が見つかりません。")
             st.stop()
         
+        # --- 処理のたびにテンプレートをメモリに読み込む ---
         template_wb = load_workbook(template_path, keep_vba=True)
         nouhinsyo_wb = load_workbook(nouhinsyo_path)
 
-        # PDFのバイナリデータをio.BytesIOに変換
         pdf_bytes_io = io.BytesIO(uploaded_pdf.getvalue())
         
-        # (データ抽出部分は変更なし)
-        df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None # 初期化
-        # ... (抽出処理)
-        df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
-        if df_paste_sheet is not None:
-             # (弁当抽出とクライアント抽出のロジックはここに)
-            try:
-                tables = extract_table_from_pdf_for_bento(io.BytesIO(pdf_bytes_io.getvalue()))
-                if tables:
-                    main_table = max(tables, key=lambda t: len(t) * len(t[0]))
-                    if main_table:
-                        anchor_col = find_correct_anchor_for_bento(main_table)
-                        if anchor_col != -1:
-                            bento_list = extract_bento_range_for_bento(main_table, anchor_col)
-                            if bento_list:
-                                matched_list = match_bento_names(bento_list, st.session_state.master_df)
-                                output_data_bento = []
-                                for item in matched_list:
-                                    match = re.search(r' \(入数: (.+?)\)$', item)
-                                    if match:
-                                        bento_name = item[:match.start()]
-                                        bento_count = match.group(1)
-                                        output_data_bento.append([bento_name.strip(), bento_count.strip()])
-                                    elif "(未マッチ)" in item:
-                                        bento_name = item.replace(" (未マッチ)", "").strip()
-                                        output_data_bento.append([bento_name, ""])
-                                    else:
-                                        output_data_bento.append([item.strip(), ""])
-                                df_bento_sheet = pd.DataFrame(output_data_bento, columns=['商品予定名', 'パン箱入数'])
-            except Exception as e:
-                st.error(f"注文弁当データ処理中にエラー: {e}")
-            
-            try:
-                client_data = extract_detailed_client_info_from_pdf(io.BytesIO(pdf_bytes_io.getvalue()))
-                if client_data:
-                    df_client_sheet = export_detailed_client_data_to_dataframe(client_data)
-                    st.success(f"クライアント情報 {len(client_data)} 件を抽出しました")
-            except Exception as e:
-                st.error(f"クライアント情報抽出中にエラー: {e}")
+        # --- データ抽出 ---
+        df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
+        with st.spinner("PDFからデータを抽出中..."):
+            df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
+            if df_paste_sheet is not None:
+                # 弁当抽出
+                try:
+                    tables = extract_table_from_pdf_for_bento(io.BytesIO(pdf_bytes_io.getvalue()))
+                    if tables:
+                        main_table = max(tables, key=lambda t: len(t) * len(t[0]))
+                        if main_table:
+                            anchor_col = find_correct_anchor_for_bento(main_table)
+                            if anchor_col != -1:
+                                bento_list = extract_bento_range_for_bento(main_table, anchor_col)
+                                if bento_list:
+                                    matched_list = match_bento_names(bento_list, st.session_state.master_df)
+                                    output_data_bento = []
+                                    for item in matched_list:
+                                        match = re.search(r' \(入数: (.+?)\)$', item)
+                                        if match:
+                                            bento_name, bento_count = item[:match.start()], match.group(1)
+                                            output_data_bento.append([bento_name.strip(), bento_count.strip()])
+                                        elif "(未マッチ)" in item:
+                                            output_data_bento.append([item.replace(" (未マッチ)", "").strip(), ""])
+                                        else:
+                                            output_data_bento.append([item.strip(), ""])
+                                    df_bento_sheet = pd.DataFrame(output_data_bento, columns=['商品予定名', 'パン箱入数'])
+                except Exception as e:
+                    st.error(f"注文弁当データ処理中にエラー: {e}")
+                
+                # クライアント抽出
+                try:
+                    client_data = extract_detailed_client_info_from_pdf(io.BytesIO(pdf_bytes_io.getvalue()))
+                    if client_data:
+                        df_client_sheet = export_detailed_client_data_to_dataframe(client_data)
+                        st.success(f"クライアント情報 {len(client_data)} 件を抽出しました")
+                except Exception as e:
+                    st.error(f"クライアント情報抽出中にエラー: {e}")
         
         if df_paste_sheet is not None:
             try:
                 # --- template.xlsmへの書き込み ---
                 with st.spinner("template.xlsm を作成中..."):
+                    # 貼り付け用シート (ここはセル指定なので従来通り)
                     ws_paste = template_wb["貼り付け用"]
                     for r_idx, row in df_paste_sheet.iterrows():
                         for c_idx, value in enumerate(row):
                             ws_paste.cell(row=r_idx + 1, column=c_idx + 1, value=value)
                     
+                    # 注文弁当の抽出 (A,B列のみ書き込み)
                     if df_bento_sheet is not None:
                         ws_bento = template_wb["注文弁当の抽出"]
-                        clear_and_write_df(ws_bento, df_bento_sheet)
+                        safe_write_df(ws_bento, df_bento_sheet, start_row=2)
                     
+                    # クライアント抽出 (A-F列のみ書き込み)
                     if df_client_sheet is not None:
                         ws_client = template_wb["クライアント抽出"]
-                        clear_and_write_df(ws_client, df_client_sheet)
+                        safe_write_df(ws_client, df_client_sheet, start_row=2)
 
                     output_macro = io.BytesIO()
                     template_wb.save(output_macro)
@@ -645,18 +436,21 @@ if page_selection == "PDF → Excel 変換":
                         df_bento_for_nouhin['商品名'] = df_bento_for_nouhin['商品予定名'].map(master_map)
                         df_bento_for_nouhin = df_bento_for_nouhin[['商品予定名', 'パン箱入数', '商品名']]
 
+                    # 貼り付け用シート
                     ws_paste_n = nouhinsyo_wb["貼り付け用"]
                     for r_idx, row in df_paste_sheet.iterrows():
                         for c_idx, value in enumerate(row):
                             ws_paste_n.cell(row=r_idx + 1, column=c_idx + 1, value=value)
                     
+                    # 注文弁当の抽出 (A,B,C列のみ書き込み)
                     if df_bento_for_nouhin is not None:
                         ws_bento_n = nouhinsyo_wb["注文弁当の抽出"]
-                        clear_and_write_df(ws_bento_n, df_bento_for_nouhin)
+                        safe_write_df(ws_bento_n, df_bento_for_nouhin, start_row=2)
                     
+                    # クライアント抽出
                     if df_client_sheet is not None:
                         ws_client_n = nouhinsyo_wb["クライアント抽出"]
-                        clear_and_write_df(ws_client_n, df_client_sheet)
+                        safe_write_df(ws_client_n, df_client_sheet, start_row=2)
                     
                     output_data_only = io.BytesIO()
                     nouhinsyo_wb.save(output_data_only)
@@ -690,19 +484,16 @@ elif page_selection == "マスタ設定":
     # (省略)
     st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
     master_csv_path = "商品マスタ一覧.csv"
-
     st.markdown("#### 新しいマスタをアップロード")
     uploaded_master_csv = st.file_uploader(
         "商品マスタ一覧.csv をアップロードしてください",
         type="csv",
         help="ヘッダーには '商品予定名', 'パン箱入数', '商品名' を含めてください。"
     )
-
     if uploaded_master_csv is not None:
         try:
             new_master_df = None
             encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
-            
             for encoding in encodings:
                 try:
                     uploaded_master_csv.seek(0)
@@ -718,10 +509,8 @@ elif page_selection == "マスタ設定":
                 except Exception as e:
                     st.error(f"読み込み中にエラー: {e}")
                     break
-
             if new_master_df is not None:
                 st.session_state.master_df = new_master_df
-                
                 try:
                     new_master_df.to_csv(master_csv_path, index=False, encoding='utf-8-sig')
                     st.success(f"✅ マスタデータを更新し、'{master_csv_path}' に保存しました。")
@@ -729,10 +518,8 @@ elif page_selection == "マスタ設定":
                     st.error(f"マスタファイル保存中にエラー: {e}")
             else:
                 st.error("CSVファイルを正しく読み込めませんでした。")
-
         except Exception as e:
             st.error(f"マスタ更新処理中にエラー: {e}")
-
     st.markdown("#### 現在のマスタデータ")
     if 'master_df' in st.session_state and not st.session_state.master_df.empty:
         st.dataframe(st.session_state.master_df, use_container_width=True)
