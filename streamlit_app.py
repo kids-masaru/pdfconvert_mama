@@ -28,6 +28,7 @@ if 'master_df' not in st.session_state:
             try:
                 temp_df = pd.read_csv(master_csv_path, encoding=encoding)
                 if not temp_df.empty:
+                    temp_df = temp_df.iloc[1:].reset_index(drop=True)
                     initial_master_df = temp_df
                     st.success(f"既存のマスタデータを {encoding} エンコーディングで読み込みました。")
                     break
