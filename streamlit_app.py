@@ -41,6 +41,30 @@ if 'master_df' not in st.session_state:
         initial_master_df = pd.DataFrame(columns=['商品予定名', 'パン箱入数', '商品名'])
     st.session_state.master_df = initial_master_df
 
+# 得意先マスタ用のSession Stateを初期化
+if 'customer_master_df' not in st.session_state:
+    customer_master_csv_path = "得意先マスタ.csv"
+    initial_customer_master_df = None
+    if os.path.exists(customer_master_csv_path):
+        encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis', 'euc-jp', 'iso-2022-jp']
+        for encoding in encodings:
+            try:
+                temp_df = pd.read_csv(customer_master_csv_path, encoding=encoding)
+                if not temp_df.empty:
+                    initial_customer_master_df = temp_df
+                    st.success(f"既存の得意先マスタを {encoding} エンコーディングで読み込みました。")
+                    break
+            except (UnicodeDecodeError, pd.errors.EmptyDataError):
+                continue
+            except Exception as e:
+                st.warning(f"既存の得意先マスタCSV ({customer_master_csv_path}) を {encoding} で読み込み中にエラーが発生しました: {e}")
+                continue
+    if initial_customer_master_df is None:
+        st.warning(f"得意先マスタ '{customer_master_csv_path}' が見つからないか、読み込めませんでした。マスタ設定ページでアップロードしてください。")
+        # (注) 得意先マスタに必要な列名を仮で設定しています。必要に応じて変更してください。
+        initial_customer_master_df = pd.DataFrame(columns=['得意先コード', '得意先名'])
+    st.session_state.customer_master_df = initial_customer_master_df
+
 # --- HTML/CSS, サイドバー ---
 components.html("""<link rel="manifest" href="./static/manifest.json">""", height=0)
 st.markdown("""<style>.stApp { background: #fff5e6; }</style>""", unsafe_allow_html=True)
@@ -436,24 +460,102 @@ if page_selection == "PDF → Excel 変換":
                 traceback.print_exc()
 
 # マスタ設定 ページ
+
 elif page_selection == "マスタ設定":
     st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
-    master_csv_path = "商品マスタ一覧.csv"
-    st.markdown("#### 新しいマスタをアップロード")
-    uploaded_master_csv = st.file_uploader(
-        "商品マスタ一覧.csv をアップロードしてください",
-        type="csv",
-        help="ヘッダーには '商品予定名', 'パン箱入数', '商品名' を含めてください。"
+    st.markdown('<div class="subtitle">更新するマスタを選択し、新しいCSVファイルをアップロードしてください。</div>', unsafe_allow_html=True)
+
+    # --- どのマスタを編集するか選択 ---
+    master_choice = st.selectbox(
+        "更新するマスタを選択してください",
+        ("商品マスタ", "得意先マスタ")
     )
-    if uploaded_master_csv is not None:
-        try:
-            # (以下、マスタ設定のロジック)
-            # ...
-            pass
-        except Exception as e:
-            st.error(f"マスタ更新処理中にエラー: {e}")
-    st.markdown("#### 現在のマスタデータ")
-    if 'master_df' in st.session_state and not st.session_state.master_df.empty:
-        st.dataframe(st.session_state.master_df, use_container_width=True)
-    else:
-        st.warning("現在、マスタデータが読み込まれていません。")
+
+    st.markdown("---")
+
+    # --- 商品マスタが選択された場合の処理 ---
+    if master_choice == "商品マスタ":
+        st.markdown("#### 商品マスタの更新")
+        master_csv_path = "商品マスタ一覧.csv"
+        
+        uploaded_master_csv = st.file_uploader(
+            "新しい商品マスタ一覧.csvをアップロード",
+            type="csv",
+            help="ヘッダーには '商品予定名', 'パン箱入数', '商品名' を含めてください。",
+            key="product_master_uploader" # uploaderごとに固有のキーを設定
+        )
+
+        if uploaded_master_csv is not None:
+            # (商品マスタの更新処理...内容は変更なし)
+            try:
+                new_master_df = None
+                encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
+                for encoding in encodings:
+                    try:
+                        uploaded_master_csv.seek(0)
+                        temp_df = pd.read_csv(uploaded_master_csv, encoding=encoding)
+                        if all(col in temp_df.columns for col in ['商品予定名', 'パン箱入数', '商品名']):
+                            new_master_df = temp_df
+                            st.info(f"ファイルを {encoding} で読み込みました。")
+                            break
+                    except (UnicodeDecodeError, pd.errors.ParserError):
+                        continue
+                
+                if new_master_df is not None:
+                    st.session_state.master_df = new_master_df
+                    new_master_df.to_csv(master_csv_path, index=False, encoding='utf-8-sig')
+                    st.success(f"✅ 商品マスタを更新し、'{master_csv_path}' に保存しました。")
+                else:
+                    st.error("CSVファイルを正しく読み込めませんでした。必須列を確認してください。")
+            except Exception as e:
+                st.error(f"商品マスタ更新処理中にエラー: {e}")
+
+        st.markdown("##### 現在の商品マスタデータ")
+        if 'master_df' in st.session_state and not st.session_state.master_df.empty:
+            st.dataframe(st.session_state.master_df, use_container_width=True)
+        else:
+            st.warning("商品マスタが読み込まれていません。")
+
+    # --- 得意先マスタが選択された場合の処理 ---
+    elif master_choice == "得意先マスタ":
+        st.markdown("#### 得意先マスタの更新")
+        customer_master_csv_path = "得意先マスタ.csv"
+        
+        # (注) helpメッセージや必須列のチェックは、実際のファイルに合わせて変更してください。
+        uploaded_customer_csv = st.file_uploader(
+            "新しい得意先マスタ.csvをアップロード",
+            type="csv",
+            help="ヘッダーには '得意先コード', '得意先名' を含めてください。",
+            key="customer_master_uploader" # uploaderごとに固有のキーを設定
+        )
+
+        if uploaded_customer_csv is not None:
+            try:
+                new_customer_df = None
+                encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
+                for encoding in encodings:
+                    try:
+                        uploaded_customer_csv.seek(0)
+                        temp_df = pd.read_csv(uploaded_customer_csv, encoding=encoding)
+                        # (注) 必須列のチェック。実際の列名に合わせて変更してください。
+                        if all(col in temp_df.columns for col in ['得意先コード', '得意先名']):
+                            new_customer_df = temp_df
+                            st.info(f"ファイルを {encoding} で読み込みました。")
+                            break
+                    except (UnicodeDecodeError, pd.errors.ParserError):
+                        continue
+                
+                if new_customer_df is not None:
+                    st.session_state.customer_master_df = new_customer_df
+                    new_customer_df.to_csv(customer_master_csv_path, index=False, encoding='utf-8-sig')
+                    st.success(f"✅ 得意先マスタを更新し、'{customer_master_csv_path}' に保存しました。")
+                else:
+                    st.error("CSVファイルを正しく読み込めませんでした。必須列を確認してください。")
+            except Exception as e:
+                st.error(f"得意先マスタ更新処理中にエラー: {e}")
+
+        st.markdown("##### 現在の得意先マスタデータ")
+        if 'customer_master_df' in st.session_state and not st.session_state.customer_master_df.empty:
+            st.dataframe(st.session_state.customer_master_df, use_container_width=True)
+        else:
+            st.warning("得意先マスタが読み込まれていません。")
