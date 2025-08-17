@@ -7,6 +7,25 @@ st.sidebar.title("メニュー")
 st.sidebar.page_link("streamlit_app.py", label="PDF Excel 変換", icon="📄")
 st.sidebar.page_link("pages/マスタ設定.py", label="マスタ設定", icon="⚙️")
 
+st.markdown("""
+    <style>
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+        .custom-title {
+            font-size: 2.1rem;
+            font-weight: 600;
+            color: #3A322E;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #FF9933;
+            margin-bottom: 25px;
+        }
+        .stApp { 
+            background: #fff5e6; 
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- ここからがページ本体のコンテンツ ---
 st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">更新するマスタの確認、および新しいCSVファイルのアップロードができます。</div>', unsafe_allow_html=True)
