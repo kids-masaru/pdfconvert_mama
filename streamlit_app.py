@@ -420,14 +420,14 @@ if page_selection == "PDF → Excel 変換":
                     st.download_button(
                         label="📥 数出表ダウンロード",
                         data=macro_excel_bytes,
-                        file_name=f"{original_pdf_name}_Processed.xlsm",
+                        file_name=f"{original_pdf_name}_数出表.xlsm",
                         mime="application/vnd.ms-excel.sheet.macroEnabled.12",
                     )
                 with col2:
                     st.download_button(
                         label="📥 納品書ダウンロード",
                         data=data_only_excel_bytes,
-                        file_name=f"{original_pdf_name}_Data.xlsx",
+                        file_name=f"{original_pdf_name}_納品書.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
             except Exception as e:
