@@ -143,9 +143,9 @@ if uploaded_pdf is not None:
             
             col1, col2 = st.columns(2)
             with col1:
-                st.download_button(label="【数出表ダウンロード】",data=macro_excel_bytes,file_name=f"{original_pdf_name}_Processed.xlsm",mime="application/vnd.ms-excel.sheet.macroEnabled.12")
+                st.download_button(label="▼　数出表ダウンロード",data=macro_excel_bytes,file_name=f"{original_pdf_name}_数出表.xlsm",mime="application/vnd.ms-excel.sheet.macroEnabled.12")
             with col2:
-                st.download_button(label="【納品書ダウンロード】",data=data_only_excel_bytes,file_name=f"{original_pdf_name}_Data.xlsx",mime="application/vnd.openxmlformats-officedocument.sheet")
+                st.download_button(label="▼　納品書ダウンロード",data=data_only_excel_bytes,file_name=f"{original_pdf_name}_納品書.xlsx",mime="application/vnd.openxmlformats-officedocument.sheet")
         except Exception as e:
             st.error(f"Excelファイル生成中にエラーが発生しました: {e}")
             traceback.print_exc()
