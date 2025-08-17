@@ -460,7 +460,6 @@ if page_selection == "PDF → Excel 変換":
                 traceback.print_exc()
 
 # マスタ設定 ページ
-
 elif page_selection == "マスタ設定":
     st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">更新するマスタを選択し、新しいCSVファイルをアップロードしてください。</div>', unsafe_allow_html=True)
@@ -486,7 +485,6 @@ elif page_selection == "マスタ設定":
         )
 
         if uploaded_master_csv is not None:
-            # (商品マスタの更新処理...内容は変更なし)
             try:
                 new_master_df = None
                 encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
