@@ -51,9 +51,10 @@ st.markdown("---")
 # ──────────────────────────────────────────────
 # ヘルパー関数
 # ──────────────────────────────────────────────
-def safe_write_df(worksheet, df, start_row=2):
+def safe_write_df(worksheet, df, start_row=1):
     """
     数式を保護するため、指定された範囲のセルのみをクリアし、データフレームを書き込む
+    ヘッダーも書き込むように修正
     """
     num_cols = df.shape[1]
     
@@ -63,8 +64,12 @@ def safe_write_df(worksheet, df, start_row=2):
             for col in range(1, num_cols + 1):
                 worksheet.cell(row=row, column=col).value = None
 
-    # 2. 新しいデータの書き込み（ヘッダーはテンプレートにあるものを活かす）
-    for r_idx, row_data in enumerate(df.itertuples(index=False), start=start_row):
+    # 2. 新しいヘッダーを書き込み
+    for c_idx, column_header in enumerate(df.columns, 1):
+        worksheet.cell(row=start_row, column=c_idx, value=column_header)
+    
+    # 3. 新しいデータをヘッダーの次の行から書き込み
+    for r_idx, row_data in enumerate(df.itertuples(index=False), start=start_row + 1):
         for c_idx, value in enumerate(row_data, start=1):
             worksheet.cell(row=r_idx, column=c_idx, value=value)
 
@@ -378,10 +383,10 @@ if page_selection == "PDF → Excel 変換":
                             ws_paste.cell(row=r_idx + 1, column=c_idx + 1, value=value)
                     
                     if df_bento_sheet is not None:
-                        safe_write_df(template_wb["注文弁当の抽出"], df_bento_sheet, start_row=2)
+                        safe_write_df(template_wb["注文弁当の抽出"], df_bento_sheet, start_row=1)
                     
                     if df_client_sheet is not None:
-                        safe_write_df(template_wb["クライアント抽出"], df_client_sheet, start_row=2)
+                        safe_write_df(template_wb["クライアント抽出"], df_client_sheet, start_row=1)
 
                     output_macro = io.BytesIO()
                     template_wb.save(output_macro)
@@ -402,10 +407,10 @@ if page_selection == "PDF → Excel 変換":
                             ws_paste_n.cell(row=r_idx + 1, column=c_idx + 1, value=value)
                     
                     if df_bento_for_nouhin is not None:
-                        safe_write_df(nouhinsyo_wb["注文弁当の抽出"], df_bento_for_nouhin, start_row=2)
+                        safe_write_df(nouhinsyo_wb["注文弁当の抽出"], df_bento_for_nouhin, start_row=1)
                     
                     if df_client_sheet is not None:
-                        safe_write_df(nouhinsyo_wb["クライアント抽出"], df_client_sheet, start_row=2)
+                        safe_write_df(nouhinsyo_wb["クライアント抽出"], df_client_sheet, start_row=1)
                     
                     output_data_only = io.BytesIO()
                     nouhinsyo_wb.save(output_data_only)
