@@ -1,4 +1,6 @@
 import streamlit as st
+import pandas as pd
+import os
 
 # ページ設定 (アプリ全体に適用)
 st.set_page_config(
@@ -8,11 +10,9 @@ st.set_page_config(
 )
 
 # --- サイドバー ---
-# これが最初に実行されるため、メニュータイトルが一番上に表示される
 st.sidebar.title("メニュー")
 
-# --- 全ページ共通のCSSとコンポーネント ---
-# 新しいタイトルのデザインをここで定義
+# --- 全ページ共通のCSS ---
 st.markdown("""
     <style>
         .custom-title {
@@ -29,5 +29,35 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Main app logic can be minimal or a welcome message
+# --- 各ページで共通して使う関数 ---
+def load_master_data(file_path, default_columns):
+    """CSVマスタデータを読み込む関数"""
+    if os.path.exists(file_path):
+        encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
+        for encoding in encodings:
+            try:
+                df = pd.read_csv(file_path, encoding=encoding)
+                if not df.empty:
+                    return df
+            except Exception:
+                continue
+    return pd.DataFrame(columns=default_columns)
+
+# --- Session Stateの初期化 ---
+# 商品マスタの読み込み
+if 'master_df' not in st.session_state:
+    st.session_state.master_df = load_master_data(
+        "商品マスタ一覧.csv", 
+        ['商品予定名', 'パン箱入数', '商品名']
+    )
+
+# 得意先マスタの読み込み
+if 'customer_master_df' not in st.session_state:
+    st.session_state.customer_master_df = load_master_data(
+        "得意先マスタ一覧.csv", 
+        ['得意先コード', '得意先名']
+    )
+
+# --- ページ遷移 ---
+# Streamlitはpagesフォルダ内の最初のページを自動で表示します
 st.markdown("サイドバーのメニューから操作を選択してください。")
