@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
-import 
+import os
 
+# --- サイドバーの表示 ---
 st.sidebar.title("メニュー")
 st.sidebar.page_link("streamlit_app.py", label="PDF Excel 変換", icon="📄")
 st.sidebar.page_link("pages/マスタ設定.py", label="マスタ設定", icon="⚙️")
 
+# --- ここからがページ本体のコンテンツ ---
 st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">更新するマスタの確認、および新しいCSVファイルのアップロードができます。</div>', unsafe_allow_html=True)
 
