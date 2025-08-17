@@ -2,11 +2,9 @@ import streamlit as st
 import pandas as pd
 import os
 
-# ページのタイトル
 st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">更新するマスタの確認、および新しいCSVファイルのアップロードができます。</div>', unsafe_allow_html=True)
 
-# --- プレビュー表示 ---
 st.markdown("##### 現在の商品マスタデータ（プレビュー）")
 if 'master_df' in st.session_state and not st.session_state.master_df.empty:
     st.dataframe(st.session_state.master_df.head(), use_container_width=True)
@@ -21,22 +19,15 @@ else:
 
 st.markdown("---")
 
-# --- どのマスタを編集するか選択 ---
 master_choice = st.selectbox(
     "更新するマスタを選択してください",
     ("商品マスタ", "得意先マスタ")
 )
 
-# --- 商品マスタが選択された場合の処理 ---
 if master_choice == "商品マスタ":
     st.markdown("#### 商品マスタの更新")
     master_csv_path = "商品マスタ一覧.csv"
-    uploaded_master_csv = st.file_uploader(
-        "新しい商品マスタ一覧.csvをアップロード",
-        type="csv",
-        help="ヘッダーには '商品予定名', 'パン箱入数', '商品名' を含めてください。",
-        key="product_master_uploader"
-    )
+    uploaded_master_csv = st.file_uploader("新しい商品マスタ一覧.csvをアップロード",type="csv",help="ヘッダーには '商品予定名', 'パン箱入数', '商品名' を含めてください。",key="product_master_uploader")
     if uploaded_master_csv is not None:
         try:
             new_master_df = None
@@ -64,16 +55,10 @@ if master_choice == "商品マスタ":
     else:
         st.warning("商品マスタが読み込まれていません。")
 
-# --- 得意先マスタが選択された場合の処理 ---
 elif master_choice == "得意先マスタ":
     st.markdown("#### 得意先マスタの更新")
     customer_master_csv_path = "得意先マスタ一覧.csv"
-    uploaded_customer_csv = st.file_uploader(
-        "新しい得意先マスタ一覧.csvをアップロード",
-        type="csv",
-        help="ヘッダーには '得意先コード', '得意先名' を含めてください。",
-        key="customer_master_uploader"
-    )
+    uploaded_customer_csv = st.file_uploader("新しい得意先マスタ一覧.csvをアップロード",type="csv",help="ヘッダーには '得意先コード', '得意先名' を含めてください。",key="customer_master_uploader")
     if uploaded_customer_csv is not None:
         try:
             new_customer_df = None
