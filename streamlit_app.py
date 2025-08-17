@@ -1,6 +1,15 @@
 import streamlit as st
 import pandas as pd
+import io
 import os
+import re
+from openpyxl import load_workbook
+import traceback
+from pdf_utils import (
+    safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
+    find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_names,
+    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe
+)
 
 # ページ設定 (アプリ全体に適用)
 st.set_page_config(
@@ -9,29 +18,8 @@ st.set_page_config(
     layout="centered",
 )
 
-# --- サイドバー ---
-st.sidebar.title("メニュー")
-
-# --- 全ページ共通のCSS ---
-st.markdown("""
-    <style>
-        .custom-title {
-            font-size: 2.1rem;
-            font-weight: 600;
-            color: #3A322E;
-            padding-bottom: 10px;
-            border-bottom: 3px solid #FF9933;
-            margin-bottom: 25px;
-        }
-        .stApp { 
-            background: #fff5e6; 
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- 各ページで共通して使う関数 ---
+# --- Session Stateの初期化 ---
 def load_master_data(file_path, default_columns):
-    """CSVマスタデータを読み込む関数"""
     if os.path.exists(file_path):
         encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
         for encoding in encodings:
@@ -43,24 +31,21 @@ def load_master_data(file_path, default_columns):
                 continue
     return pd.DataFrame(columns=default_columns)
 
-# --- Session Stateの初期化 ---
-# アプリ起動時に一度だけ実行され、全ページで共有されます
 if 'master_df' not in st.session_state:
-    st.session_state.master_df = load_master_data(
-        "商品マスタ一覧.csv", 
-        ['商品予定名', 'パン箱入数', '商品名']
-    )
-
+    st.session_state.master_df = load_master_data("商品マスタ一覧.csv", ['商品予定名', 'パン箱入数', '商品名'])
 if 'customer_master_df' not in st.session_state:
-    st.session_state.customer_master_df = load_master_data(
-        "得意先マスタ一覧.csv", 
-        ['得意先コード', '得意先名']
-    )
+    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧.csv", ['得意先コード', '得意先名'])
 
-# --- 起動時に表示するページを自動で切り替え ---
-if "page" not in st.session_state:
-    st.session_state.page = "PDF Excel 変換"
-
-# このファイルはトップページとして表示させない
-if st.session_state.page == "PDF Excel 変換":
-    st.switch_page("pages/1_PDF_Excel_変換.py")
+# --- サイドバーの見た目を制御 ---
+st.markdown("""
+    <style>
+        /* Streamlitが自動生成するサイドバーの項目を非表示にする */
+        [data-testid="stSidebarNav"] ul {
+            display: none;
+        }
+        /* タイトルのデザイン */
+        .custom-title {
+            font-size: 2.1rem;
+            font-weight: 600;
+            color: #3A322E;
+            padding-bottom: 10px;
