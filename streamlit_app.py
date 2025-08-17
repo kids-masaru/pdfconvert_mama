@@ -19,6 +19,7 @@ st.set_page_config(
 )
 
 # --- Streamlit Session Stateの初期化 ---
+# 商品マスタの読み込み
 if 'master_df' not in st.session_state:
     master_csv_path = "商品マスタ一覧.csv"
     initial_master_df = None
@@ -29,41 +30,35 @@ if 'master_df' not in st.session_state:
                 temp_df = pd.read_csv(master_csv_path, encoding=encoding)
                 if not temp_df.empty:
                     initial_master_df = temp_df
-                    st.success(f"既存のマスタデータを {encoding} エンコーディングで読み込みました。")
+                    st.success(f"既存の商品マスタを {encoding} で読み込みました。")
                     break
-            except (UnicodeDecodeError, pd.errors.EmptyDataError):
-                continue
-            except Exception as e:
-                st.warning(f"既存マスタCSV ({master_csv_path}) を {encoding} で読み込み中にエラーが発生しました: {e}")
+            except Exception:
                 continue
     if initial_master_df is None:
-        st.warning(f"マスタデータ '{master_csv_path}' が見つからないか、読み込めませんでした。マスタ設定ページでアップロードしてください。")
+        st.warning(f"商品マスタ '{master_csv_path}' が見つからないか、読み込めませんでした。")
         initial_master_df = pd.DataFrame(columns=['商品予定名', 'パン箱入数', '商品名'])
     st.session_state.master_df = initial_master_df
 
-# 得意先マスタ用のSession Stateを初期化
+# 得意先マスタの読み込み
 if 'customer_master_df' not in st.session_state:
-    customer_master_csv_path = "得意先マスタ.csv"
+    customer_master_csv_path = "得意先マスター一覧.csv" # ファイル名をフォルダ構成に合わせ修正
     initial_customer_master_df = None
     if os.path.exists(customer_master_csv_path):
-        encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis', 'euc-jp', 'iso-2022-jp']
+        encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
         for encoding in encodings:
             try:
                 temp_df = pd.read_csv(customer_master_csv_path, encoding=encoding)
                 if not temp_df.empty:
                     initial_customer_master_df = temp_df
-                    st.success(f"既存の得意先マスタを {encoding} エンコーディングで読み込みました。")
+                    st.success(f"既存の得意先マスタを {encoding} で読み込みました。")
                     break
-            except (UnicodeDecodeError, pd.errors.EmptyDataError):
-                continue
-            except Exception as e:
-                st.warning(f"既存の得意先マスタCSV ({customer_master_csv_path}) を {encoding} で読み込み中にエラーが発生しました: {e}")
+            except Exception:
                 continue
     if initial_customer_master_df is None:
-        st.warning(f"得意先マスタ '{customer_master_csv_path}' が見つからないか、読み込めませんでした。マスタ設定ページでアップロードしてください。")
-        # (注) 得意先マスタに必要な列名を仮で設定しています。必要に応じて変更してください。
+        st.warning(f"得意先マスタ '{customer_master_csv_path}' が見つからないか、読み込めませんでした。")
         initial_customer_master_df = pd.DataFrame(columns=['得意先コード', '得意先名'])
     st.session_state.customer_master_df = initial_customer_master_df
+
 
 # --- HTML/CSS, サイドバー ---
 components.html("""<link rel="manifest" href="./static/manifest.json">""", height=0)
@@ -76,27 +71,18 @@ st.markdown("---")
 # ヘルパー関数
 # ──────────────────────────────────────────────
 def safe_write_df(worksheet, df, start_row=1):
-    """
-    数式を保護するため、指定された範囲のセルのみをクリアし、データフレームを書き込む
-    （ヘッダーを書き込まず、データのみを指定行から書き込むように修正）
-    """
     num_cols = df.shape[1]
-    
-    # 1. 既存データのクリア（指定列のみ）
     if worksheet.max_row >= start_row:
         for row in range(start_row, worksheet.max_row + 1):
             for col in range(1, num_cols + 1):
                 worksheet.cell(row=row, column=col).value = None
-
-    # 2. 新しいデータを指定された行から書き込み
     for r_idx, row_data in enumerate(df.itertuples(index=False), start=start_row):
         for c_idx, value in enumerate(row_data, start=1):
             worksheet.cell(row=r_idx, column=c_idx, value=value)
 
 # ──────────────────────────────────────────────
-# PDF解析・データ抽出関数群 (省略されていたものを全て記載)
+# PDF解析・データ抽出関数群
 # ──────────────────────────────────────────────
-
 def extract_detailed_client_info_from_pdf(pdf_file_obj):
     client_data = []
     try:
@@ -329,12 +315,17 @@ def match_bento_names(pdf_bento_list, master_df):
         norm_pdf = unicodedata.normalize('NFKC', str(pdf_name)).replace(" ", "")
         found_match, found_name, found_id = False, None, None
         
-        # Simple match first
         for norm_m, orig_m, m_id in norm_master:
             if norm_m.startswith(norm_pdf):
                 found_name, found_id, found_match = orig_m, m_id, True
                 break
         
+        if not found_match:
+             for norm_m, orig_m, m_id in norm_master:
+                if norm_pdf in norm_m:
+                    found_name, found_id, found_match = orig_m, m_id, True
+                    break
+
         if found_match:
             matched.append(f"{found_name} (入数: {found_id})")
         else:
@@ -342,12 +333,26 @@ def match_bento_names(pdf_bento_list, master_df):
             
     return matched
 
-
 # ──────────────────────────────────────────────
 # メインアプリケーション
 # ──────────────────────────────────────────────
 if page_selection == "PDF → Excel 変換":
     st.markdown('<div class="title">【数出表】PDF → Excelへの変換</div>', unsafe_allow_html=True)
+
+    # --- プレビュー表示 ---
+    st.markdown("##### 現在の商品マスタデータ（プレビュー）")
+    if 'master_df' in st.session_state and not st.session_state.master_df.empty:
+        st.dataframe(st.session_state.master_df.head(), use_container_width=True)
+    else:
+        st.warning("商品マスタが読み込まれていません。")
+    
+    st.markdown("##### 現在の得意先マスタデータ（プレビュー）")
+    if 'customer_master_df' in st.session_state and not st.session_state.customer_master_df.empty:
+        st.dataframe(st.session_state.customer_master_df.head(), use_container_width=True)
+    else:
+        st.warning("得意先マスタが読み込まれていません。")
+    
+    st.markdown("---")
 
     uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf")
 
@@ -396,7 +401,6 @@ if page_selection == "PDF → Excel 変換":
         if df_paste_sheet is not None:
             try:
                 with st.spinner("Excelファイルを作成中..."):
-                    # --- template.xlsmへの書き込み ---
                     ws_paste = template_wb["貼り付け用"]
                     for r_idx, row in df_paste_sheet.iterrows():
                         for c_idx, value in enumerate(row):
@@ -412,7 +416,6 @@ if page_selection == "PDF → Excel 変換":
                     template_wb.save(output_macro)
                     macro_excel_bytes = output_macro.getvalue()
 
-                    # --- nouhinsyo.xlsxへの書き込み ---
                     df_bento_for_nouhin = None
                     if df_bento_sheet is not None:
                         master_df = st.session_state.master_df
@@ -436,35 +439,32 @@ if page_selection == "PDF → Excel 変換":
                     nouhinsyo_wb.save(output_data_only)
                     data_only_excel_bytes = output_data_only.getvalue()
 
-                # --- ダウンロードボタンの表示 ---
                 st.success("✅ ファイルの準備が完了しました！")
                 original_pdf_name = os.path.splitext(uploaded_pdf.name)[0]
                 
                 col1, col2 = st.columns(2)
                 with col1:
                     st.download_button(
-                        label="📥 数出表ダウンロード",
+                        label="【数出表ダウンロード】",
                         data=macro_excel_bytes,
-                        file_name=f"{original_pdf_name}_数出表.xlsm",
+                        file_name=f"{original_pdf_name}_Processed.xlsm",
                         mime="application/vnd.ms-excel.sheet.macroEnabled.12",
                     )
                 with col2:
                     st.download_button(
-                        label="📥 納品書ダウンロード",
+                        label="【納品書ダウンロード】",
                         data=data_only_excel_bytes,
-                        file_name=f"{original_pdf_name}_納品書.xlsx",
+                        file_name=f"{original_pdf_name}_Data.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
             except Exception as e:
                 st.error(f"Excelファイル生成中にエラーが発生しました: {e}")
                 traceback.print_exc()
 
-# マスタ設定 ページ
 elif page_selection == "マスタ設定":
     st.markdown('<div class="title">マスタデータ設定</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">更新するマスタを選択し、新しいCSVファイルをアップロードしてください。</div>', unsafe_allow_html=True)
 
-    # --- どのマスタを編集するか選択 ---
     master_choice = st.selectbox(
         "更新するマスタを選択してください",
         ("商品マスタ", "得意先マスタ")
@@ -472,7 +472,6 @@ elif page_selection == "マスタ設定":
 
     st.markdown("---")
 
-    # --- 商品マスタが選択された場合の処理 ---
     if master_choice == "商品マスタ":
         st.markdown("#### 商品マスタの更新")
         master_csv_path = "商品マスタ一覧.csv"
@@ -481,7 +480,7 @@ elif page_selection == "マスタ設定":
             "新しい商品マスタ一覧.csvをアップロード",
             type="csv",
             help="ヘッダーには '商品予定名', 'パン箱入数', '商品名' を含めてください。",
-            key="product_master_uploader" # uploaderごとに固有のキーを設定
+            key="product_master_uploader"
         )
 
         if uploaded_master_csv is not None:
@@ -496,7 +495,7 @@ elif page_selection == "マスタ設定":
                             new_master_df = temp_df
                             st.info(f"ファイルを {encoding} で読み込みました。")
                             break
-                    except (UnicodeDecodeError, pd.errors.ParserError):
+                    except Exception:
                         continue
                 
                 if new_master_df is not None:
@@ -514,17 +513,15 @@ elif page_selection == "マスタ設定":
         else:
             st.warning("商品マスタが読み込まれていません。")
 
-    # --- 得意先マスタが選択された場合の処理 ---
     elif master_choice == "得意先マスタ":
         st.markdown("#### 得意先マスタの更新")
-        customer_master_csv_path = "得意先マスタ.csv"
+        customer_master_csv_path = "得意先マスター一覧.csv"
         
-        # (注) helpメッセージや必須列のチェックは、実際のファイルに合わせて変更してください。
         uploaded_customer_csv = st.file_uploader(
-            "新しい得意先マスタ.csvをアップロード",
+            "新しい得意先マスター一覧.csvをアップロード",
             type="csv",
             help="ヘッダーには '得意先コード', '得意先名' を含めてください。",
-            key="customer_master_uploader" # uploaderごとに固有のキーを設定
+            key="customer_master_uploader"
         )
 
         if uploaded_customer_csv is not None:
@@ -535,12 +532,11 @@ elif page_selection == "マスタ設定":
                     try:
                         uploaded_customer_csv.seek(0)
                         temp_df = pd.read_csv(uploaded_customer_csv, encoding=encoding)
-                        # (注) 必須列のチェック。実際の列名に合わせて変更してください。
                         if all(col in temp_df.columns for col in ['得意先コード', '得意先名']):
                             new_customer_df = temp_df
                             st.info(f"ファイルを {encoding} で読み込みました。")
                             break
-                    except (UnicodeDecodeError, pd.errors.ParserError):
+                    except Exception:
                         continue
                 
                 if new_customer_df is not None:
