@@ -5,27 +5,19 @@ import os
 import re
 from openpyxl import load_workbook
 import traceback
-
-# utilsファイルから関数を読み込む
 from pdf_utils import (
-    safe_write_df,
-    pdf_to_excel_data_for_paste_sheet,
-    extract_table_from_pdf_for_bento,
-    find_correct_anchor_for_bento,
-    extract_bento_range_for_bento,
-    match_bento_names,
-    extract_detailed_client_info_from_pdf,
-    export_detailed_client_data_to_dataframe,
+    safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
+    find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_names,
+    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe
 )
 
-# ページのタイトル (新しいデザインを適用)
+# ページのタイトル
 st.markdown('<p class="custom-title">数出表 PDF変換ツール</p>', unsafe_allow_html=True)
 
 # PDFアップローダー
 uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf", label_visibility="collapsed")
 
 if uploaded_pdf is not None:
-    # (ここから下の処理は、以前のstreamlit_app.pyにあったものと同じです)
     template_path = "template.xlsm"
     nouhinsyo_path = "nouhinsyo.xlsx"
     if not os.path.exists(template_path) or not os.path.exists(nouhinsyo_path):
@@ -34,7 +26,6 @@ if uploaded_pdf is not None:
     
     template_wb = load_workbook(template_path, keep_vba=True)
     nouhinsyo_wb = load_workbook(nouhinsyo_path)
-
     pdf_bytes_io = io.BytesIO(uploaded_pdf.getvalue())
     
     df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
@@ -70,7 +61,6 @@ if uploaded_pdf is not None:
     if df_paste_sheet is not None:
         try:
             with st.spinner("Excelファイルを作成中..."):
-                # --- template.xlsmへの書き込み ---
                 ws_paste = template_wb["貼り付け用"]
                 for r_idx, row in df_paste_sheet.iterrows():
                     for c_idx, value in enumerate(row):
@@ -81,7 +71,6 @@ if uploaded_pdf is not None:
                 template_wb.save(output_macro)
                 macro_excel_bytes = output_macro.getvalue()
 
-                # --- nouhinsyo.xlsxへの書き込み ---
                 df_bento_for_nouhin = None
                 if df_bento_sheet is not None:
                     master_df = st.session_state.master_df
