@@ -3,7 +3,6 @@ import pandas as pd
 import 
 
 st.sidebar.title("メニュー")
-# 手動でナビゲーションリンクを作成する
 st.sidebar.page_link("streamlit_app.py", label="PDF Excel 変換", icon="📄")
 st.sidebar.page_link("pages/マスタ設定.py", label="マスタ設定", icon="⚙️")
 
