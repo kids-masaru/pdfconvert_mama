@@ -57,7 +57,3 @@ if 'customer_master_df' not in st.session_state:
         "得意先マスタ一覧.csv", 
         ['得意先コード', '得意先名']
     )
-
-# --- ページ遷移 ---
-# Streamlitはpagesフォルダ内の最初のページを自動で表示します
-st.markdown("サイドバーのメニューから操作を選択してください。")
