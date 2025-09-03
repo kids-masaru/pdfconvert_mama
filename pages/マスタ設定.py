@@ -119,7 +119,7 @@ if master_choice == "商品マスタ":
 elif master_choice == "得意先マスタ":
     st.markdown("#### 得意先マスタの更新")
     customer_master_csv_path = os.path.abspath("得意先マスタ一覧.csv")  # 絶対パス使用
-    uploaded_customer_csv = st.file_uploader("新しい得意先マスタ一覧.csvをアップロード",type="csv",help="ヘッダーには '得意先コード', '得意先名' を含めてください。",key="customer_master_uploader")
+    uploaded_customer_csv = st.file_uploader("新しい得意先マスタ一覧.csvをアップロード",type="csv",help="ヘッダーには '得意先CD', '得意先名' を含めてください。",key="customer_master_uploader")
     if uploaded_customer_csv is not None:
         try:
             new_customer_df = None
@@ -128,7 +128,7 @@ elif master_choice == "得意先マスタ":
                 try:
                     uploaded_customer_csv.seek(0)
                     temp_df = pd.read_csv(uploaded_customer_csv, encoding=encoding)
-                    if all(col in temp_df.columns for col in ['得意先コード', '得意先名']):
+                    if all(col in temp_df.columns for col in ['得意先CD', '得意先名']):
                         new_customer_df = temp_df
                         st.info(f"ファイルを {encoding} で読み込みました。")
                         break
