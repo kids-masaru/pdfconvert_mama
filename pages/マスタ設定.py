@@ -59,57 +59,74 @@ master_choice = st.selectbox(
     ("商品マスタ", "得意先マスタ")
 )
 
+def try_read_csv_filelike(filelike, required_cols):
+    """
+    複数エンコーディングで読み込みを試み、必須列が揃う最初のDataFrameを返す。
+    成功しなければ None を返す。内部の例外は表示しない。
+    """
+    encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
+    for enc in encodings:
+        try:
+            filelike.seek(0)
+            df = pd.read_csv(filelike, encoding=enc)
+            if all(col in df.columns for col in required_cols):
+                return df, enc
+        except Exception:
+            continue
+    # 最後にエラー許容で一度だけ試す（不正バイトを置換）
+    try:
+        filelike.seek(0)
+        df = pd.read_csv(filelike, encoding='utf-8', engine='python', errors='replace')
+        if all(col in df.columns for col in required_cols):
+            return df, 'utf-8 (replace errors)'
+    except Exception:
+        pass
+    return None, None
+
 if master_choice == "商品マスタ":
     st.markdown("#### 商品マスタの更新")
     master_csv_path = os.path.abspath("商品マスタ一覧.csv")  # 絶対パス使用
-    uploaded_master_csv = st.file_uploader("新しい商品マスタ一覧.csvをアップロード",type="csv",help="ヘッダーには '商品予定名', 'パン箱入数', '商品名' を含めてください。",key="product_master_uploader")
+    uploaded_master_csv = st.file_uploader(
+        "新しい商品マスタ一覧.csvをアップロード",
+        type="csv",
+        help="ヘッダーには '商品予定名', 'パン箱入数', '商品名' を含めてください。",
+        key="product_master_uploader"
+    )
     if uploaded_master_csv is not None:
         try:
-            new_master_df = None
-            encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
-            for encoding in encodings:
-                try:
-                    uploaded_master_csv.seek(0)
-                    temp_df = pd.read_csv(uploaded_master_csv, encoding=encoding)
-                    if all(col in temp_df.columns for col in ['商品予定名', 'パン箱入数', '商品名']):
-                        new_master_df = temp_df
-                        st.info(f"ファイルを {encoding} で読み込みました。")
-                        break
-                except Exception: continue
+            required_cols = ['商品予定名', 'パン箱入数', '商品名']
+            new_master_df, used_enc = try_read_csv_filelike(uploaded_master_csv, required_cols)
             if new_master_df is not None:
-                # セッション状態を更新
                 st.session_state.master_df = new_master_df
-                
+
                 # バックアップ作成
                 if os.path.exists(master_csv_path):
                     backup_path = master_csv_path.replace('.csv', '_backup.csv')
                     os.rename(master_csv_path, backup_path)
                     st.info(f"既存ファイルをバックアップしました: {backup_path}")
-                
-                # 新しいファイルを保存
+
+                # 新しいファイルを保存（utf-8-sig）
                 new_master_df.to_csv(master_csv_path, index=False, encoding='utf-8-sig')
-                
+
                 # 保存確認
                 if os.path.exists(master_csv_path):
-                    # 保存されたファイルを読み直して検証
                     try:
                         verification_df = pd.read_csv(master_csv_path, encoding='utf-8-sig')
                         if len(verification_df) == len(new_master_df):
                             st.success(f"✅ 商品マスタを更新し、'{master_csv_path}' に正常に保存しました。")
-                            st.info(f"更新内容: {len(new_master_df)} 件のデータを保存")
-                            st.info(f"保存場所: {master_csv_path}")
+                            st.info(f"読み込みに使用したエンコーディング: {used_enc}")
+                            st.info(f"更新件数: {len(new_master_df)} 件")
                         else:
                             st.warning("ファイルは保存されましたが、データ件数が一致しません。")
-                    except Exception as e:
-                        st.warning(f"ファイル保存の検証中にエラー: {e}")
+                    except Exception:
+                        st.warning("ファイル保存の検証中に問題が発生しました（詳細はログ）。")
                 else:
                     st.error("ファイルの保存に失敗しました。")
             else:
-                st.error("CSVファイルを正しく読み込めませんでした。必須列を確認してください。")
-        except Exception as e:
-            st.error(f"商品マスタ更新処理中にエラー: {e}")
-            import traceback
-            st.error(f"詳細エラー: {traceback.format_exc()}")
+                st.error("CSVファイルを正しく読み込めませんでした。ヘッダーやファイル形式を確認してください。")
+        except Exception:
+            st.error("商品マスタの更新中にエラーが発生しました。管理者にお問い合わせください。")
+
     st.markdown("##### 現在の商品マスタデータ（全件）")
     if 'master_df' in st.session_state and not st.session_state.master_df.empty:
         st.dataframe(st.session_state.master_df, width='stretch')
@@ -119,78 +136,47 @@ if master_choice == "商品マスタ":
 elif master_choice == "得意先マスタ":
     st.markdown("#### 得意先マスタの更新")
     customer_master_csv_path = os.path.abspath("得意先マスタ一覧.csv")  # 絶対パス使用
-    uploaded_customer_csv = st.file_uploader("新しい得意先マスタ一覧.csvをアップロード",type="csv",help="ヘッダーには '得意先CD', '得意先名' を含めてください。",key="customer_master_uploader")
+    uploaded_customer_csv = st.file_uploader(
+        "新しい得意先マスタ一覧.csvをアップロード",
+        type="csv",
+        help="ヘッダーには '得意先ＣＤ', '得意先名' を含めてください。",
+        key="customer_master_uploader"
+    )
     if uploaded_customer_csv is not None:
         try:
-            new_customer_df = None
-            encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
-            
-            # デバッグ用：アップロードされたCSVの内容を確認
-            st.write("🔍 デバッグ情報:")
-            for encoding in encodings:
-                try:
-                    uploaded_customer_csv.seek(0)
-                    temp_df = pd.read_csv(uploaded_customer_csv, encoding=encoding)
-                    st.write(f"エンコード: {encoding}")
-                    st.write(f"列名: {list(temp_df.columns)}")
-                    st.write(f"各列名の詳細:")
-                    for i, col in enumerate(temp_df.columns):
-                        st.write(f"  列{i}: '{col}' (長さ: {len(col)}, 型: {type(col)})")
-                    st.write("データの最初の3行:")
-                    st.dataframe(temp_df.head(3))
-                    
-                    # 必須列の確認
-                    required_cols = ['得意先ＣＤ', '得意先名']
-                    st.write(f"必須列: {required_cols}")
-                    for req_col in required_cols:
-                        if req_col in temp_df.columns:
-                            st.write(f"✅ '{req_col}' は存在します")
-                        else:
-                            st.write(f"❌ '{req_col}' が見つかりません")
-                    
-                    if all(col in temp_df.columns for col in required_cols):
-                        new_customer_df = temp_df
-                        st.info(f"ファイルを {encoding} で読み込みました。")
-                        break
-                    else:
-                        st.warning(f"{encoding} では必須列が見つかりませんでした")
-                except Exception as e:
-                    st.write(f"エンコード {encoding} でエラー: {e}")
-                    continue
+            required_cols = ['得意先ＣＤ', '得意先名']
+            new_customer_df, used_enc = try_read_csv_filelike(uploaded_customer_csv, required_cols)
             if new_customer_df is not None:
-                # セッション状態を更新
                 st.session_state.customer_master_df = new_customer_df
-                
+
                 # バックアップ作成
                 if os.path.exists(customer_master_csv_path):
                     backup_path = customer_master_csv_path.replace('.csv', '_backup.csv')
                     os.rename(customer_master_csv_path, backup_path)
                     st.info(f"既存ファイルをバックアップしました: {backup_path}")
-                
-                # 新しいファイルを保存
+
+                # 新しいファイルを保存（utf-8-sig）
                 new_customer_df.to_csv(customer_master_csv_path, index=False, encoding='utf-8-sig')
-                
+
                 # 保存確認
                 if os.path.exists(customer_master_csv_path):
-                    # 保存されたファイルを読み直して検証
                     try:
                         verification_df = pd.read_csv(customer_master_csv_path, encoding='utf-8-sig')
                         if len(verification_df) == len(new_customer_df):
                             st.success(f"✅ 得意先マスタを更新し、'{customer_master_csv_path}' に正常に保存しました。")
-                            st.info(f"更新内容: {len(new_customer_df)} 件のデータを保存")
-                            st.info(f"保存場所: {customer_master_csv_path}")
+                            st.info(f"読み込みに使用したエンコーディング: {used_enc}")
+                            st.info(f"更新件数: {len(new_customer_df)} 件")
                         else:
                             st.warning("ファイルは保存されましたが、データ件数が一致しません。")
-                    except Exception as e:
-                        st.warning(f"ファイル保存の検証中にエラー: {e}")
+                    except Exception:
+                        st.warning("ファイル保存の検証中に問題が発生しました（詳細はログ）。")
                 else:
                     st.error("ファイルの保存に失敗しました。")
             else:
-                st.error("CSVファイルを正しく読み込めませんでした。必須列を確認してください。")
-        except Exception as e:
-            st.error(f"得意先マスタ更新処理中にエラー: {e}")
-            import traceback
-            st.error(f"詳細エラー: {traceback.format_exc()}")
+                st.error("CSVファイルを正しく読み込めませんでした。ヘッダーやファイル形式を確認してください。")
+        except Exception:
+            st.error("得意先マスタの更新中にエラーが発生しました。管理者にお問い合わせください。")
+
     st.markdown("##### 現在の得意先マスタデータ（全件）")
     if 'customer_master_df' in st.session_state and not st.session_state.customer_master_df.empty:
         st.dataframe(st.session_state.customer_master_df, width='stretch')
