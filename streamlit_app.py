@@ -34,7 +34,7 @@ def load_master_data(file_path, default_columns):
 if 'master_df' not in st.session_state:
     st.session_state.master_df = load_master_data("商品マスタ一覧.csv", ['商品予定名', 'パン箱入数', '商品名'])
 if 'customer_master_df' not in st.session_state:
-    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧.csv", ['得意先コード', '得意先名'])
+    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧.csv", ['得意先ＣＤ', '得意先名'])
 
 # --- PWAメタタグとサイドバーの見た目を制御 ---
 st.markdown("""
