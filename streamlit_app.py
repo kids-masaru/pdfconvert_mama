@@ -4,7 +4,6 @@ import io
 import os
 import re
 from openpyxl import load_workbook
-import traceback
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
     find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_names,
@@ -81,7 +80,7 @@ if uploaded_pdf is not None:
     template_path = "template.xlsm"
     nouhinsyo_path = "nouhinsyo.xlsx"
     if not os.path.exists(template_path) or not os.path.exists(nouhinsyo_path):
-        st.error(f"'{template_path}' または '{nouhinsyo_path}' が見つかりません。")
+        st.error(f"必要なテンプレートファイルが見つかりません：'{template_path}' または '{nouhinsyo_path}'")
         st.stop()
     
     template_wb = load_workbook(template_path, keep_vba=True)
@@ -90,8 +89,14 @@ if uploaded_pdf is not None:
     
     df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
     with st.spinner("PDFからデータを抽出中..."):
-        df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
+        try:
+            df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
+        except Exception:
+            df_paste_sheet = None
+            st.error("PDFからの貼り付け用データ抽出中にエラーが発生しました。")
+
         if df_paste_sheet is not None:
+            # 注文弁当データの抽出
             try:
                 tables = extract_table_from_pdf_for_bento(io.BytesIO(pdf_bytes_io.getvalue()))
                 if tables:
@@ -109,14 +114,17 @@ if uploaded_pdf is not None:
                                 else:
                                     output_data.append([item.replace(" (未マッチ)", ""), ""])
                             df_bento_sheet = pd.DataFrame(output_data, columns=['商品予定名', 'パン箱入数'])
-            except Exception as e: st.error(f"注文弁当データ処理中にエラー: {e}")
-            
+            except Exception:
+                st.error("注文弁当データ処理中にエラーが発生しました。")
+
+            # クライアント情報の抽出
             try:
                 client_data = extract_detailed_client_info_from_pdf(io.BytesIO(pdf_bytes_io.getvalue()))
                 if client_data:
                     df_client_sheet = export_detailed_client_data_to_dataframe(client_data)
                     st.success(f"クライアント情報 {len(client_data)} 件を抽出しました")
-            except Exception as e: st.error(f"クライアント情報抽出中にエラー: {e}")
+            except Exception:
+                st.error("クライアント情報抽出中にエラーが発生しました。")
     
     if df_paste_sheet is not None:
         try:
@@ -125,8 +133,10 @@ if uploaded_pdf is not None:
                 for r_idx, row in df_paste_sheet.iterrows():
                     for c_idx, value in enumerate(row):
                         ws_paste.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                if df_bento_sheet is not None: safe_write_df(template_wb["注文弁当の抽出"], df_bento_sheet, start_row=1)
-                if df_client_sheet is not None: safe_write_df(template_wb["クライアント抽出"], df_client_sheet, start_row=1)
+                if df_bento_sheet is not None:
+                    safe_write_df(template_wb["注文弁当の抽出"], df_bento_sheet, start_row=1)
+                if df_client_sheet is not None:
+                    safe_write_df(template_wb["クライアント抽出"], df_client_sheet, start_row=1)
                 output_macro = io.BytesIO()
                 template_wb.save(output_macro)
                 macro_excel_bytes = output_macro.getvalue()
@@ -144,9 +154,9 @@ if uploaded_pdf is not None:
                 for r_idx, row in df_paste_sheet.iterrows():
                     for c_idx, value in enumerate(row):
                         ws_paste_n.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                if df_bento_for_nouhin is not None: 
+                if df_bento_for_nouhin is not None:
                     safe_write_df(nouhinsyo_wb["注文弁当の抽出"], df_bento_for_nouhin, start_row=1)
-                if df_client_sheet is not None: 
+                if df_client_sheet is not None:
                     safe_write_df(nouhinsyo_wb["クライアント抽出"], df_client_sheet, start_row=1)
                 
                 # 得意先マスタの書き込みを追加
@@ -162,9 +172,8 @@ if uploaded_pdf is not None:
             
             col1, col2 = st.columns(2)
             with col1:
-                st.download_button(label="▼　数出表ダウンロード",data=macro_excel_bytes,file_name=f"{original_pdf_name}_数出表.xlsm",mime="application/vnd.ms-excel.sheet.macroEnabled.12")
+                st.download_button(label="▼　数出表ダウンロード", data=macro_excel_bytes, file_name=f"{original_pdf_name}_数出表.xlsm", mime="application/vnd.ms-excel.sheet.macroEnabled.12")
             with col2:
-                st.download_button(label="▼　納品書ダウンロード",data=data_only_excel_bytes,file_name=f"{original_pdf_name}_納品書.xlsx",mime="application/vnd.openxmlformats-officedocument.sheet")
-        except Exception as e:
-            st.error(f"Excelファイル生成中にエラーが発生しました: {e}")
-            traceback.print_exc()
+                st.download_button(label="▼　納品書ダウンロード", data=data_only_excel_bytes, file_name=f"{original_pdf_name}_納品書.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        except Exception:
+            st.error("Excelファイル生成中にエラーが発生しました。詳細はログを確認してください。")
