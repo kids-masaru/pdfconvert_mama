@@ -14,7 +14,7 @@ from pdf_utils import (
 # ページ設定 (アプリ全体に適用)
 st.set_page_config(
     page_title="PDF変換ツール",
-    page_icon="./static/favicon.ico",
+    page_icon="./static/icons/android-chrome-192.png",
     layout="centered",
 )
 
