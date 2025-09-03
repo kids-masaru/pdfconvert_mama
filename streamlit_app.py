@@ -138,12 +138,21 @@ if uploaded_pdf is not None:
                     df_bento_for_nouhin = df_bento_sheet.copy()
                     df_bento_for_nouhin['商品名'] = df_bento_for_nouhin['商品予定名'].map(master_map)
                     df_bento_for_nouhin = df_bento_for_nouhin[['商品予定名', 'パン箱入数', '商品名']]
+                
+                # nouhinsyo.xlsxへの書き込み処理
                 ws_paste_n = nouhinsyo_wb["貼り付け用"]
                 for r_idx, row in df_paste_sheet.iterrows():
                     for c_idx, value in enumerate(row):
                         ws_paste_n.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                if df_bento_for_nouhin is not None: safe_write_df(nouhinsyo_wb["注文弁当の抽出"], df_bento_for_nouhin, start_row=1)
-                if df_client_sheet is not None: safe_write_df(nouhinsyo_wb["クライアント抽出"], df_client_sheet, start_row=1)
+                if df_bento_for_nouhin is not None: 
+                    safe_write_df(nouhinsyo_wb["注文弁当の抽出"], df_bento_for_nouhin, start_row=1)
+                if df_client_sheet is not None: 
+                    safe_write_df(nouhinsyo_wb["クライアント抽出"], df_client_sheet, start_row=1)
+                
+                # 得意先マスタの書き込みを追加
+                if not st.session_state.customer_master_df.empty:
+                    safe_write_df(nouhinsyo_wb["得意先マスタ"], st.session_state.customer_master_df, start_row=1)
+                
                 output_data_only = io.BytesIO()
                 nouhinsyo_wb.save(output_data_only)
                 data_only_excel_bytes = output_data_only.getvalue()
