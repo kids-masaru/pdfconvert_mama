@@ -36,8 +36,18 @@ if 'master_df' not in st.session_state:
 if 'customer_master_df' not in st.session_state:
     st.session_state.customer_master_df = load_master_data("得意先マスタ一覧.csv", ['得意先コード', '得意先名'])
 
-# --- サイドバーの見た目を制御 ---
+# --- PWAメタタグとサイドバーの見た目を制御 ---
 st.markdown("""
+    <!-- PWA メタタグ -->
+    <link rel="manifest" href="/app/static/manifest.json">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="PDF変換ツール">
+    <link rel="apple-touch-icon" href="/app/static/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/app/static/icons/android-chrome-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/app/static/icons/android-chrome-512.png">
+    
     <style>
         /* Streamlitが自動生成するサイドバーの項目を非表示にする */
         [data-testid="stSidebarNav"] ul {
