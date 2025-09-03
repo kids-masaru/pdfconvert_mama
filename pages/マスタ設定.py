@@ -124,15 +124,39 @@ elif master_choice == "得意先マスタ":
         try:
             new_customer_df = None
             encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
+            
+            # デバッグ用：アップロードされたCSVの内容を確認
+            st.write("🔍 デバッグ情報:")
             for encoding in encodings:
                 try:
                     uploaded_customer_csv.seek(0)
                     temp_df = pd.read_csv(uploaded_customer_csv, encoding=encoding)
-                    if all(col in temp_df.columns for col in ['得意先CD', '得意先名']):
+                    st.write(f"エンコード: {encoding}")
+                    st.write(f"列名: {list(temp_df.columns)}")
+                    st.write(f"各列名の詳細:")
+                    for i, col in enumerate(temp_df.columns):
+                        st.write(f"  列{i}: '{col}' (長さ: {len(col)}, 型: {type(col)})")
+                    st.write("データの最初の3行:")
+                    st.dataframe(temp_df.head(3))
+                    
+                    # 必須列の確認
+                    required_cols = ['得意先ＣＤ', '得意先名']
+                    st.write(f"必須列: {required_cols}")
+                    for req_col in required_cols:
+                        if req_col in temp_df.columns:
+                            st.write(f"✅ '{req_col}' は存在します")
+                        else:
+                            st.write(f"❌ '{req_col}' が見つかりません")
+                    
+                    if all(col in temp_df.columns for col in required_cols):
                         new_customer_df = temp_df
                         st.info(f"ファイルを {encoding} で読み込みました。")
                         break
-                except Exception: continue
+                    else:
+                        st.warning(f"{encoding} では必須列が見つかりませんでした")
+                except Exception as e:
+                    st.write(f"エンコード {encoding} でエラー: {e}")
+                    continue
             if new_customer_df is not None:
                 # セッション状態を更新
                 st.session_state.customer_master_df = new_customer_df
