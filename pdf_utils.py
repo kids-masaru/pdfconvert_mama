@@ -199,4 +199,140 @@ def extract_text_with_layout(page) -> List[List[str]]:
     if len(boundaries) < 2:
         lines = page.extract_text(layout=False, x_tolerance=3, y_tolerance=3)
         return [[line] for line in lines.split('\n') if line.strip()] if lines else []
-    row_groups = get_line_groups(words
+    row_groups = get_line_groups(words, y_tolerance=1.5)
+    result_rows = []
+    for group in row_groups:
+        sorted_group = sorted(group, key=lambda w: w['x0'])
+        columns = split_line_using_boundaries(sorted_group, boundaries)
+        if any(cell.strip() for cell in columns):
+            result_rows.append(columns)
+    return result_rows
+
+def remove_extra_empty_columns(rows: List[List[str]]) -> List[List[str]]:
+    if not rows: return rows
+    num_cols = max(len(row) for row in rows) if rows else 0
+    if num_cols == 0: return rows
+    is_col_empty = [True] * num_cols
+    for row in rows:
+        for c, cell in enumerate(row):
+            if c < num_cols and cell.strip(): is_col_empty[c] = False
+    keep_indices = [c for c, is_empty in enumerate(is_col_empty) if not is_empty]
+    return [[row[i] if i < len(row) else "" for i in keep_indices] for row in rows]
+
+def post_process_rows(rows: List[List[str]]) -> List[List[str]]:
+    new_rows = [row[:] for row in rows]
+    for i, row in enumerate(new_rows):
+        for j, cell in enumerate(row):
+            if "合計" in str(cell) and i > 0 and j < len(new_rows[i-1]):
+                new_rows[i-1][j] = ""
+    return new_rows
+
+def pdf_to_excel_data_for_paste_sheet(pdf_file):
+    try:
+        with pdfplumber.open(pdf_file) as pdf:
+            if not pdf.pages: return None
+            page = pdf.pages[0]
+            rows = extract_text_with_layout(page)
+            rows = [row for row in rows if any(cell.strip() for cell in row)]
+            if not rows: return None
+            rows = post_process_rows(rows)
+            rows = remove_extra_empty_columns(rows)
+            if not rows: return None
+            
+            improved_rows = []
+            for row in rows:
+                improved_row = [improve_number_extraction(str(cell)) for cell in row]
+                improved_rows.append(improved_row)
+            
+            max_cols = max(len(row) for row in improved_rows)
+            normalized_rows = [row + [''] * (max_cols - len(row)) for row in improved_rows]
+            return pd.DataFrame(normalized_rows)
+    except Exception:
+        return None
+
+def improve_number_extraction(cell_text):
+    if not cell_text or not str(cell_text).strip(): return cell_text
+    cell_str = str(cell_text).strip()
+    if re.match(r'^\d{1,3}(,\d{3})*$', cell_str):
+        try: return int(cell_str.replace(',', ''))
+        except ValueError: pass
+    elif re.match(r'^\d+\.\d+$', cell_str):
+        try: return float(cell_str)
+        except ValueError: pass
+    elif re.match(r'^\d+$', cell_str):
+        try: return int(cell_str)
+        except ValueError: pass
+    number_match = re.search(r'\d{1,3}(,\d{3})*(\.\d+)?', cell_str)
+    if number_match:
+        number_part = number_match.group(0)
+        try:
+            if '.' in number_part: extracted_number = float(number_part.replace(',', ''))
+            else: extracted_number = int(number_part.replace(',', ''))
+            if len(number_part) / len(cell_str) > 0.7: return extracted_number
+        except ValueError: pass
+    return cell_text
+
+def debug_pdf_content(pdf_bytes_io) -> dict:
+    debug_info = {'pages': 0, 'total_chars': 0, 'numbers_found': [], 'text_sample': ""}
+    try:
+        with pdfplumber.open(pdf_bytes_io) as pdf:
+            debug_info['pages'] = len(pdf.pages)
+            for i, page in enumerate(pdf.pages):
+                words = page.extract_words()
+                debug_info['total_chars'] += len(words) if words else 0
+                text = page.extract_text() or ""
+                if i == 0: debug_info['text_sample'] = text[:500]
+                numbers = re.findall(r'\d{1,3}(,\d{3})*(\.\d+)?|\d+', text)
+                clean_numbers = []
+                for num in numbers:
+                    if isinstance(num, tuple):
+                        clean_numbers.append(num[0] + num[1] if num[1] else num[0])
+                    else:
+                        clean_numbers.append(num)
+                debug_info['numbers_found'].extend(clean_numbers)
+    except Exception as e:
+        debug_info['error'] = str(e)
+    return debug_info
+
+def extract_table_from_pdf_for_bento(pdf_file_obj):
+    tables = []
+    with pdfplumber.open(pdf_file_obj) as pdf:
+        for page in pdf.pages:
+            if not page.extract_text() or not any(kw in page.extract_text() for kw in ["園名", "飯あり", "キャラ弁"]): continue
+            if not page.lines: continue
+            table_settings = {"vertical_strategy": "lines", "horizontal_strategy": "lines"}
+            table = page.extract_table(table_settings)
+            if table: tables.append(table)
+    return tables
+
+def find_correct_anchor_for_bento(table, target_row_text="赤"):
+    for r_idx, row in enumerate(table):
+        if target_row_text in ''.join(str(c) for c in row if c):
+            for offset in [1, 2]:
+                if r_idx + offset < len(table):
+                    for c_idx, cell in enumerate(table[r_idx + offset]):
+                        if cell and "飯なし" in cell: return c_idx
+    return -1
+
+def extract_bento_range_for_bento(table, start_col):
+    bento_list, end_col = [], -1
+    for row in table:
+        if "おやつ" in ''.join(str(c) for c in row if c):
+            for c_idx, cell in enumerate(row):
+                if cell and "おやつ" in cell:
+                    end_col = c_idx
+                    break
+            if end_col != -1: break
+    if end_col == -1 or start_col >= end_col: return []
+    header_row_idx = -1
+    for r_idx, row in enumerate(table):
+        if any(c and "飯なし" in c for c in row):
+            if r_idx > 0: header_row_idx = r_idx - 1
+            break
+    if header_row_idx == -1: return []
+    header_row = table[header_row_idx]
+    for col in range(start_col + 1, end_col):
+        cell_text = header_row[col] if col < len(header_row) else ""
+        if cell_text and str(cell_text).strip():
+            bento_list.append(str(cell_text).strip())
+    return bento_list
