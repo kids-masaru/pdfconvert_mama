@@ -27,7 +27,7 @@ def load_master_data(file_prefix, default_columns):
     最新の商品マスタCSVを読み込む。
     - 全ての列を文字列として読み込む
     - 空のセルを空文字に変換
-    - 「商品予定名」からスペースを完全除去したマッチング専用列を内部的に作成
+    - 「商品予定名」の文字列を整形（前後の空白除去）
     """
     list_of_files = glob.glob(os.path.join('.', f'{file_prefix}*.csv'))
     if not list_of_files:
@@ -41,10 +41,7 @@ def load_master_data(file_prefix, default_columns):
             df = pd.read_csv(latest_file, encoding=encoding, dtype=str)
             df = df.fillna('')
             if '商品予定名' in df.columns:
-                # --- ▼修正点▼ ---
-                # 元のデータはそのままに、マッチング用の列を準備
-                df['商品予定名_normalized'] = df['商品予定名'].str.replace(r'\s+', '', regex=True)
-                # --- ▲修正点▲ ---
+                df['商品予定名'] = df['商品予定名'].str.strip()
             if not df.empty:
                 return df
         except Exception:
@@ -109,64 +106,68 @@ if uploaded_pdf is not None:
                     if anchor_col != -1:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
+                            matched_list_from_util = match_bento_names(bento_list, st.session_state.master_df)
                             output_data = []
                             master_df = st.session_state.master_df
                             
-                            # 取得したい列名がマスタに存在するか確認
-                            required_cols = ['クラス分け名称4', 'クラス分け名称5', '商品予定名_normalized']
+                            required_cols = ['クラス分け名称4', 'クラス分け名称5', '商品予定名']
                             if not all(col in master_df.columns for col in required_cols):
                                 st.error(f"エラー: 商品マスタに必要な列 {required_cols} が見つかりません。")
                                 st.stop()
 
-                            # --- ▼修正点▼ ---
-                            # マスタの検索対象（スペース除去済み弁当名）をリストとして保持
-                            master_names_normalized = master_df['商品予定名_normalized'].tolist()
-                            # --- ▲修正点▲ ---
-
                             if show_debug:
                                 st.write("--- 弁当名マッチング状況 ---")
 
-                            for item in bento_list: # PDFから抽出した生のリストをループ
+                            for item in matched_list_from_util:
                                 bento_name, bento_iri = "", ""
-                                # 入数表記は元の `match_bento_names` のロジックを参考にする
-                                match = re.search(r'(.+?)\s*\(入数:', item)
-                                if match:
-                                    bento_name = match.group(1).strip()
+                                # --- ▼修正点▼ ---
+                                # B列(入数)が空白になっていた問題を修正
+                                match = re.search(r' \((.+?)\)$', item)
+                                if match and "入数" in match.group(1):
+                                     bento_name = item[:match.start()].strip()
+                                     bento_iri = re.search(r'入数:\s*(.+)', match.group(1)).group(1) if re.search(r'入数:\s*(.+)', match.group(1)) else ""
                                 else:
-                                    bento_name = item.strip()
+                                     bento_name = item.replace(" (未マッチ)", "").strip()
+                                # --- ▲修正点▲ ---
                                 
                                 val_p, val_r = "", ""
                                 
                                 # --- ▼修正点▼ ---
-                                # PDFから抽出した弁当名からも全てのスペースを除去
-                                normalized_bento_name = re.sub(r'\s+', '', bento_name)
-                                
-                                # 部分一致する候補を全て探し出す
-                                candidates = [name for name in master_names_normalized if name in normalized_bento_name and name]
-                                
-                                best_match = ""
-                                if candidates:
-                                    # 候補の中から最も長いものを最適なマッチとして採用
-                                    best_match = max(candidates, key=len)
+                                # 2段階のマッチングロジック（まず完全一致、だめなら部分一致）
+                                matched_rows = master_df[master_df['商品予定名'] == bento_name]
+                                match_type = "完全一致"
 
-                                if best_match:
-                                    # 最適なマッチを使ってマスタから元の行を特定
-                                    matched_rows = master_df[master_df['商品予定名_normalized'] == best_match]
-                                    if not matched_rows.empty:
-                                        first_row = matched_rows.iloc[0]
-                                        # 列名で直接データを取得
-                                        val_p = str(first_row['クラス分け名称4'])
-                                        val_r = str(first_row['クラス分け名称5'])
-                                        
-                                        if show_debug:
-                                            st.success(f"✅ マッチ成功: '{bento_name}' -> 最適候補: '{best_match}' -> 名称4='{val_p}', 名称5='{val_r}'")
+                                if matched_rows.empty:
+                                    # 完全一致で失敗した場合、部分一致を試す
+                                    match_type = "部分一致"
+                                    # PDFから抽出した名前のスペースをすべて除去
+                                    normalized_bento_name = re.sub(r'\s+', '', bento_name)
+                                    # 部分一致する候補をマスタから探す
+                                    # 条件：マスタの「商品予定名」が、スペース除去後のPDF弁当名に含まれている
+                                    master_df['temp_match'] = master_df['商品予定名'].apply(lambda x: x in normalized_bento_name)
+                                    candidates = master_df[master_df['temp_match']]
+                                    
+                                    if not candidates.empty:
+                                        # 候補の中から最も文字数が長いものを採用（誤マッチを防ぐため）
+                                        best_match_name = candidates['商品予定名'].str.len().idxmax()
+                                        matched_rows = master_df.loc[[best_match_name]]
+
+                                if not matched_rows.empty:
+                                    first_row = matched_rows.iloc[0]
+                                    val_p = str(first_row['クラス分け名称4'])
+                                    val_r = str(first_row['クラス分け名称5'])
+                                    if show_debug:
+                                        st.success(f"✅ マッチ成功 ({match_type}): '{bento_name}' -> 名称4='{val_p}', 名称5='{val_r}'")
                                 else:
                                     if show_debug:
-                                        st.warning(f"⚠️ マッチ失敗: '{bento_name}' (検索名: '{normalized_bento_name}') - 商品マスタに部分一致する候補が見つかりません。")
+                                        st.warning(f"⚠️ マッチ失敗: '{bento_name}'")
                                 # --- ▲修正点▲ ---
                                 
                                 output_data.append([bento_name, bento_iri, val_p, val_r])
                             
+                            if 'temp_match' in master_df.columns:
+                                master_df.drop(columns=['temp_match'], inplace=True)
+
                             df_bento_sheet = pd.DataFrame(output_data, columns=['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5'])
                             
                             if show_debug:
@@ -175,7 +176,7 @@ if uploaded_pdf is not None:
 
             except Exception as e:
                 st.error(f"注文弁当データ処理中にエラーが発生しました: {str(e)}")
-                st.exception(e) # デバッグ用に詳細なエラー情報を表示
+                if show_debug: st.exception(e)
 
             # クライアント情報の抽出 (変更なし)
             try:
