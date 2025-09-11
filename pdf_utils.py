@@ -1,9 +1,187 @@
-# pdf_utils.py の修正版 - 数値抽出を改善
+# pdf_utils.py - 完全版（既存の関数 + 新しい改善された関数）
 
 import pdfplumber
 import pandas as pd
 import re
 from typing import List, Tuple, Any, Optional
+
+# ===============================================
+# 既存の関数（元のpdf_utils.pyから必要な関数を追加）
+# ===============================================
+
+def safe_write_df(worksheet, df, start_row=1):
+    """DataFrameを安全にワークシートに書き込む"""
+    try:
+        for r_idx, row in df.iterrows():
+            for c_idx, value in enumerate(row):
+                worksheet.cell(row=r_idx + start_row, column=c_idx + 1, value=value)
+    except Exception as e:
+        print(f"DataFrame書き込みエラー: {e}")
+
+def pdf_to_excel_data_for_paste_sheet(pdf_bytes_io):
+    """従来のPDFからExcelへのデータ変換（フォールバック用）"""
+    try:
+        with pdfplumber.open(pdf_bytes_io) as pdf:
+            all_text = ""
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    all_text += text + "\n"
+            
+            if not all_text.strip():
+                return pd.DataFrame()
+            
+            # 行ごとに分割
+            lines = all_text.split('\n')
+            data_rows = []
+            
+            for line in lines:
+                if line.strip():
+                    # スペースで分割（複数スペースを考慮）
+                    cells = re.split(r'\s{2,}', line.strip())
+                    if len(cells) > 1:  # 複数列がある行のみ
+                        data_rows.append(cells)
+            
+            if data_rows:
+                # 最大列数に合わせる
+                max_cols = max(len(row) for row in data_rows)
+                normalized_data = []
+                for row in data_rows:
+                    while len(row) < max_cols:
+                        row.append("")
+                    normalized_data.append(row)
+                
+                return pd.DataFrame(normalized_data)
+            
+            return pd.DataFrame()
+            
+    except Exception as e:
+        print(f"従来のPDF変換エラー: {e}")
+        return pd.DataFrame()
+
+def extract_table_from_pdf_for_bento(pdf_bytes_io):
+    """弁当用テーブル抽出"""
+    try:
+        with pdfplumber.open(pdf_bytes_io) as pdf:
+            tables = []
+            for page in pdf.pages:
+                page_tables = page.extract_tables()
+                if page_tables:
+                    tables.extend(page_tables)
+            return tables
+    except Exception as e:
+        print(f"弁当テーブル抽出エラー: {e}")
+        return []
+
+def find_correct_anchor_for_bento(table):
+    """弁当用アンカー検索"""
+    try:
+        if not table:
+            return -1
+        
+        # テーブルの最初の行からアンカー列を探す
+        header_row = table[0] if table else []
+        for i, cell in enumerate(header_row):
+            if cell and ('商品' in str(cell) or '弁当' in str(cell) or '品名' in str(cell)):
+                return i
+        
+        return 0  # デフォルトは最初の列
+    except Exception:
+        return -1
+
+def extract_bento_range_for_bento(table, anchor_col):
+    """弁当範囲抽出"""
+    try:
+        bento_list = []
+        if not table or anchor_col < 0:
+            return bento_list
+        
+        for row in table[1:]:  # ヘッダー行をスキップ
+            if len(row) > anchor_col and row[anchor_col]:
+                bento_name = str(row[anchor_col]).strip()
+                if bento_name:
+                    bento_list.append(bento_name)
+        
+        return bento_list
+    except Exception as e:
+        print(f"弁当範囲抽出エラー: {e}")
+        return []
+
+def match_bento_names(bento_list, master_df):
+    """弁当名マッチング"""
+    try:
+        matched_list = []
+        
+        if master_df.empty or '商品予定名' not in master_df.columns:
+            return [f"{name} (未マッチ)" for name in bento_list]
+        
+        master_names = master_df['商品予定名'].tolist()
+        
+        for bento_name in bento_list:
+            matched = False
+            for master_name in master_names:
+                if str(master_name).strip() == str(bento_name).strip():
+                    # 入数情報を追加
+                    if 'パン箱入数' in master_df.columns:
+                        matched_row = master_df[master_df['商品予定名'] == master_name]
+                        if not matched_row.empty:
+                            iri_value = matched_row.iloc[0]['パン箱入数']
+                            matched_list.append(f"{bento_name} (入数: {iri_value})")
+                            matched = True
+                            break
+            
+            if not matched:
+                matched_list.append(f"{bento_name} (未マッチ)")
+        
+        return matched_list
+    except Exception as e:
+        print(f"弁当名マッチングエラー: {e}")
+        return [f"{name} (エラー)" for name in bento_list]
+
+def extract_detailed_client_info_from_pdf(pdf_bytes_io):
+    """詳細クライアント情報抽出"""
+    try:
+        with pdfplumber.open(pdf_bytes_io) as pdf:
+            client_data = []
+            
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    lines = text.split('\n')
+                    for line in lines:
+                        # クライアント情報のパターンを検索
+                        if any(keyword in line for keyword in ['株式会社', '有限会社', '会社', '様']):
+                            client_data.append({
+                                'client_info': line.strip(),
+                                'page': len(client_data) + 1
+                            })
+            
+            return client_data
+    except Exception as e:
+        print(f"クライアント情報抽出エラー: {e}")
+        return []
+
+def export_detailed_client_data_to_dataframe(client_data):
+    """クライアントデータをDataFrameに変換"""
+    try:
+        if not client_data:
+            return pd.DataFrame()
+        
+        df_data = []
+        for item in client_data:
+            df_data.append([
+                item.get('client_info', ''),
+                item.get('page', '')
+            ])
+        
+        return pd.DataFrame(df_data, columns=['クライアント情報', 'ページ'])
+    except Exception as e:
+        print(f"クライアントDataFrame変換エラー: {e}")
+        return pd.DataFrame()
+
+# ===============================================
+# 新しい改善された関数
+# ===============================================
 
 def extract_text_with_numbers(pdf_bytes_io) -> str:
     """PDFから文字と数字の両方を確実に抽出する"""
