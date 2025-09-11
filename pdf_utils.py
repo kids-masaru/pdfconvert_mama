@@ -1,3 +1,8 @@
+import pandas as pd
+import pdfplumber
+import re
+import unicodedata
+from typing import List, Dict, Any
 def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List[List[str]]:
     """
     PDFから抽出した弁当名リストを商品マスタと照合し、
