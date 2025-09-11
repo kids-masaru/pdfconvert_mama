@@ -153,21 +153,19 @@ if uploaded_pdf is not None:
                 st.write("商品マスタサンプル:")
                 st.dataframe(master_df.head(3))
                 
-                # P列とR列の値をデバッグ表示（元の値と数字抽出結果の両方）
+                # P列とR列の値をデバッグ表示（文字列のまま）
                 if len(master_df.columns) > 15:
                     p_samples = []
                     for i in range(min(3, len(master_df))):
                         original = safe_get_value(master_df, i, 15)
-                        number = extract_number_only(master_df, i, 15)
-                        p_samples.append(f"'{original}' → {number}")
+                        p_samples.append(f"'{original}'")
                     st.write(f"P列（16列目）の値サンプル: {p_samples}")
-                    
+
                 if len(master_df.columns) > 17:
                     r_samples = []
                     for i in range(min(3, len(master_df))):
                         original = safe_get_value(master_df, i, 17)
-                        number = extract_number_only(master_df, i, 17)
-                        r_samples.append(f"'{original}' → {number}")
+                        r_samples.append(f"'{original}'")
                     st.write(f"R列（18列目）の値サンプル: {r_samples}")
     
     df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
