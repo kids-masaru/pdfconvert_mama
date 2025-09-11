@@ -94,9 +94,24 @@ if uploaded_pdf is not None:
                     if anchor_col != -1:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
+                            if show_debug:
+                                st.write("#### 📝 PDFから抽出された弁当名リスト")
+                                for i, name in enumerate(bento_list, 1):
+                                    st.write(f"{i}. `{name}`")
+                                st.divider()
+                            
                             # --- ▼修正点▼ ---
                             # 強化された `match_bento_data` を呼び出し、整形済みのデータを受け取る
                             matched_data = match_bento_data(bento_list, st.session_state.master_df)
+                            
+                            if show_debug:
+                                st.write("#### 🔄 マッチング結果の詳細")
+                                for i, data in enumerate(matched_data, 1):
+                                    st.write(f"**{i}. {data[0]}**")
+                                    st.write(f"   - パン箱入数: `{data[1]}`")
+                                    st.write(f"   - クラス分け名称4: `{data[2]}`") 
+                                    st.write(f"   - クラス分け名称5: `{data[3]}`")
+                                st.divider()
                             
                             # 受け取ったデータから直接DataFrameを作成するだけのシンプルな処理に
                             df_bento_sheet = pd.DataFrame(matched_data, columns=['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5'])
