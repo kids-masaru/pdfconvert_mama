@@ -1,3 +1,5 @@
+# streamlit_app.py
+
 import streamlit as st
 import pandas as pd
 import io
@@ -6,11 +8,12 @@ import re
 from openpyxl import load_workbook
 import glob
 
-# pdf_utils.py から、新しくなった `match_bento_data` をインポート
+# `match_bento_names` の代わりに、新しい `match_bento_data` をインポート
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
-    find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_data, # 変更点
-    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe
+    find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_data, 
+    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe,
+    debug_pdf_content
 )
 
 # ページ設定 (アプリ全体に適用)
@@ -91,15 +94,15 @@ if uploaded_pdf is not None:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
                             # --- ▼修正点▼ ---
-                            # 強化された `match_bento_data` を呼び出すだけ
+                            # 強化された `match_bento_data` を呼び出し、整形済みのデータを受け取る
                             matched_data = match_bento_data(bento_list, st.session_state.master_df)
                             
-                            # 返ってきた整形済みのデータから直接DataFrameを作成
+                            # 受け取ったデータから直接DataFrameを作成するだけのシンプルな処理に
                             df_bento_sheet = pd.DataFrame(matched_data, columns=['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5'])
                             # --- ▲修正点▲ ---
                             
                             if show_debug:
-                                st.write("--- 最終的な弁当データ ---")
+                                st.write("--- 抽出・マッチング後の最終データ ---")
                                 st.dataframe(df_bento_sheet)
 
             except Exception as e:
@@ -134,10 +137,12 @@ if uploaded_pdf is not None:
                 df_bento_for_nouhin = None
                 if df_bento_sheet is not None:
                     master_df = st.session_state.master_df
-                    master_map = master_df.drop_duplicates(subset=['商品予定名']).set_index('商品予定名')['商品名'].to_dict()
-                    df_bento_for_nouhin = df_bento_sheet.copy()
-                    df_bento_for_nouhin['商品名'] = df_bento_for_nouhin['商品予定名'].map(master_map)
-                    df_bento_for_nouhin = df_bento_for_nouhin[['商品予定名', 'パン箱入数', '商品名']]
+                    # DataFrameの列名が変更されたため、ここも修正
+                    if '商品名' in master_df.columns:
+                        master_map = master_df.drop_duplicates(subset=['商品予定名']).set_index('商品予定名')['商品名'].to_dict()
+                        df_bento_for_nouhin = df_bento_sheet.copy()
+                        df_bento_for_nouhin['商品名'] = df_bento_for_nouhin['商品予定名'].map(master_map)
+                        df_bento_for_nouhin = df_bento_for_nouhin[['商品予定名', 'パン箱入数', '商品名']]
                 
                 ws_paste_n = nouhinsyo_wb["貼り付け用"]
                 for r_idx, row in df_paste_sheet.iterrows():
