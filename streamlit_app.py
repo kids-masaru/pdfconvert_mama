@@ -6,12 +6,12 @@ import re
 from openpyxl import load_workbook
 import glob # globモジュールを追加
 
-# すべての関数をインポート（既存 + 新しい関数）
+# すべての関数をインポート（存在しない関数を削除）
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
     find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_names,
     extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe,
-    improved_pdf_to_excel_data_for_paste_sheet, debug_pdf_content
+    debug_pdf_content  # improved_pdf_to_excel_data_for_paste_sheet を削除
 )
 
 # ページ設定 (アプリ全体に適用)
@@ -122,26 +122,17 @@ if uploaded_pdf is not None:
     df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
     with st.spinner("PDFからデータを抽出中..."):
         try:
-            # 改善された抽出方法を最初に試行
+            # 既存の抽出方法のみを使用
             if show_debug:
-                st.info("🔄 改善された抽出方法を使用しています...")
+                st.info("🔄 PDFデータを抽出しています...")
             
-            df_paste_sheet = improved_pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
+            df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
             
             # 結果をチェック
             if df_paste_sheet is not None and not df_paste_sheet.empty:
-                st.success(f"✅ 改善された方法でデータを抽出しました（{len(df_paste_sheet)}行 × {len(df_paste_sheet.columns)}列）")
+                st.success(f"✅ データを抽出しました（{len(df_paste_sheet)}行 × {len(df_paste_sheet.columns)}列）")
             else:
-                # フォールバックを試行
-                if show_debug:
-                    st.warning("⚠️ 改善された方法が失敗。従来の方法を試行中...")
-                
-                df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
-                
-                if df_paste_sheet is not None and not df_paste_sheet.empty:
-                    st.success(f"✅ 従来の方法でデータを抽出しました（{len(df_paste_sheet)}行 × {len(df_paste_sheet.columns)}列）")
-                else:
-                    st.warning("⚠️ データの抽出に失敗しました")
+                st.warning("⚠️ データの抽出に失敗しました")
             
             # 抽出されたデータのプレビュー
             if df_paste_sheet is not None and not df_paste_sheet.empty and show_debug:
