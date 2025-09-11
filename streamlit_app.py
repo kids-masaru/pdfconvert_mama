@@ -53,7 +53,6 @@ if 'customer_master_df' not in st.session_state:
 
 # --- PWAメタタグとサイドバーの見た目を制御 ---
 st.markdown("""
-    <!-- PWA メタタグ -->
     <link rel="manifest" href="./static/manifest.json">
     <meta name="theme-color" content="#ffffff">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -121,15 +120,48 @@ if uploaded_pdf is not None:
                     if anchor_col != -1:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
+                            # ------------------- ▼ ここから修正 ▼ -------------------
                             matched_list = match_bento_names(bento_list, st.session_state.master_df)
                             output_data = []
+                            master_df = st.session_state.master_df
+
+                            # 商品マスタの列数が十分にあるか（R列=18列目まであるか）を確認
+                            has_enough_columns = len(master_df.columns) > 17
+
+                            # P列(16列目)とR列(18列目)のヘッダー名を取得。なければデフォルト名を設定
+                            col_p_name = master_df.columns[15] if has_enough_columns else '追加データC'
+                            col_r_name = master_df.columns[17] if has_enough_columns else '追加データD'
+
                             for item in matched_list:
+                                # 弁当名と入数を抽出
+                                bento_name = ""
+                                bento_iri = ""
                                 match = re.search(r' \(入数: (.+?)\)$', item)
                                 if match:
-                                    output_data.append([item[:match.start()], match.group(1)])
+                                    bento_name = item[:match.start()]
+                                    bento_iri = match.group(1)
                                 else:
-                                    output_data.append([item.replace(" (未マッチ)", ""), ""])
-                            df_bento_sheet = pd.DataFrame(output_data, columns=['商品予定名', 'パン箱入数'])
+                                    bento_name = item.replace(" (未マッチ)", "")
+
+                                val_p = ""
+                                val_r = ""
+                                
+                                # 商品マスタのD列（商品予定名）で一致する行を検索
+                                # D列の列名が'商品予定名'であることを前提としています
+                                if '商品予定名' in master_df.columns:
+                                    matched_row = master_df[master_df['商品予定名'] == bento_name]
+                                    # 一致する行があり、かつマスタに十分な列数が存在する場合
+                                    if not matched_row.empty and has_enough_columns:
+                                        # 最初に見つかった行のP列(16番目)とR列(18番目)の値を取得
+                                        val_p = matched_row.iloc[0, 15]
+                                        val_r = matched_row.iloc[0, 17]
+                                
+                                # A, B, C, D列のデータをリストに追加
+                                output_data.append([bento_name, bento_iri, val_p, val_r])
+                            
+                            # 4列構成でDataFrameを作成
+                            df_bento_sheet = pd.DataFrame(output_data, columns=['商品予定名', 'パン箱入数', col_p_name, col_r_name])
+                            # ------------------- ▲ ここまで修正 ▲ -------------------
             except Exception:
                 st.error("注文弁当データ処理中にエラーが発生しました。")
 
@@ -163,6 +195,7 @@ if uploaded_pdf is not None:
                     master_map = master_df.drop_duplicates(subset=['商品予定名']).set_index('商品予定名')['商品名'].to_dict()
                     df_bento_for_nouhin = df_bento_sheet.copy()
                     df_bento_for_nouhin['商品名'] = df_bento_for_nouhin['商品予定名'].map(master_map)
+                    # 納品書用は従来通り3列に絞り込む
                     df_bento_for_nouhin = df_bento_for_nouhin[['商品予定名', 'パン箱入数', '商品名']]
                 
                 # nouhinsyo.xlsxへの書き込み処理
