@@ -106,11 +106,38 @@ if uploaded_pdf is not None:
                             
                             if show_debug:
                                 st.write("#### 🔄 マッチング結果の詳細")
+                                
+                                # マスタから実際にマッチした行を表示
+                                st.write("**🔎 マッチした行の詳細確認:**")
                                 for i, data in enumerate(matched_data, 1):
                                     st.write(f"**{i}. {data[0]}**")
                                     st.write(f"   - パン箱入数: `{data[1]}`")
                                     st.write(f"   - クラス分け名称4: `{data[2]}`") 
                                     st.write(f"   - クラス分け名称5: `{data[3]}`")
+                                    
+                                    # この商品がマスタのどの行とマッチしたかを確認
+                                    original_name = bento_list[i-1]  # 元のPDF名
+                                    matched_rows = st.session_state.master_df[
+                                        st.session_state.master_df['商品予定名'].str.contains(data[0], na=False) |
+                                        st.session_state.master_df['商品予定名'].str.contains(original_name, na=False)
+                                    ]
+                                    
+                                    if not matched_rows.empty:
+                                        st.write(f"   **📋 マッチしたマスタ行:**")
+                                        # 関連する列のみ表示
+                                        cols_to_show = ['商品予定名', 'パン箱入数']
+                                        # P列とR列も追加
+                                        if len(st.session_state.master_df.columns) >= 16:
+                                            cols_to_show.append(st.session_state.master_df.columns[15])
+                                        if len(st.session_state.master_df.columns) >= 18:
+                                            cols_to_show.append(st.session_state.master_df.columns[17])
+                                        
+                                        # 存在する列のみフィルタ
+                                        available_cols = [col for col in cols_to_show if col in st.session_state.master_df.columns]
+                                        st.dataframe(matched_rows[available_cols])
+                                    else:
+                                        st.write(f"   ⚠️ マスタで該当行が見つかりません")
+                                
                                 st.divider()
                             
                             # 受け取ったデータから直接DataFrameを作成するだけのシンプルな処理に
