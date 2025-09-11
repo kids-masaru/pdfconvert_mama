@@ -24,10 +24,10 @@ st.set_page_config(
 # --- Session Stateの初期化 ---
 def load_master_data(file_prefix, default_columns):
     """
-    最新の商品マスタCSVを読み込む。
+    最新の商品マータCSVを読み込む。
     - 全ての列を文字列として読み込む
     - 空のセルを空文字に変換
-    - 「商品予定名」の文字列を整形（前後の空白除去）
+    - ★★ヘッダー名の前後の空白を自動除去★★
     """
     list_of_files = glob.glob(os.path.join('.', f'{file_prefix}*.csv'))
     if not list_of_files:
@@ -40,6 +40,12 @@ def load_master_data(file_prefix, default_columns):
         try:
             df = pd.read_csv(latest_file, encoding=encoding, dtype=str)
             df = df.fillna('')
+            
+            # --- ▼修正点▼ ---
+            # CSVの列名（ヘッダー）に含まれる余分なスペースを除去する
+            df.columns = df.columns.str.strip()
+            # --- ▲修正点▲ ---
+
             if '商品予定名' in df.columns:
                 df['商品予定名'] = df['商品予定名'].str.strip()
             if not df.empty:
@@ -121,47 +127,44 @@ if uploaded_pdf is not None:
                             for item in matched_list_from_util:
                                 bento_name, bento_iri = "", ""
                                 # --- ▼修正点▼ ---
-                                # B列(入数)が空白になっていた問題を修正
-                                match = re.search(r' \((.+?)\)$', item)
-                                if match and "入数" in match.group(1):
-                                     bento_name = item[:match.start()].strip()
-                                     bento_iri = re.search(r'入数:\s*(.+)', match.group(1)).group(1) if re.search(r'入数:\s*(.+)', match.group(1)) else ""
+                                # B列（パン箱入数）の取得ロジックを安定版に戻しました
+                                match = re.search(r' \(入数: (.+?)\)$', item)
+                                if match:
+                                    bento_name = item[:match.start()].strip()
+                                    bento_iri = match.group(1).strip()
                                 else:
-                                     bento_name = item.replace(" (未マッチ)", "").strip()
+                                    bento_name = item.replace(" (未マッチ)", "").strip()
                                 # --- ▲修正点▲ ---
                                 
                                 val_p, val_r = "", ""
                                 
-                                # --- ▼修正点▼ ---
                                 # 2段階のマッチングロジック（まず完全一致、だめなら部分一致）
                                 matched_rows = master_df[master_df['商品予定名'] == bento_name]
                                 match_type = "完全一致"
 
                                 if matched_rows.empty:
-                                    # 完全一致で失敗した場合、部分一致を試す
                                     match_type = "部分一致"
-                                    # PDFから抽出した名前のスペースをすべて除去
                                     normalized_bento_name = re.sub(r'\s+', '', bento_name)
                                     # 部分一致する候補をマスタから探す
-                                    # 条件：マスタの「商品予定名」が、スペース除去後のPDF弁当名に含まれている
                                     master_df['temp_match'] = master_df['商品予定名'].apply(lambda x: x in normalized_bento_name)
                                     candidates = master_df[master_df['temp_match']]
                                     
                                     if not candidates.empty:
-                                        # 候補の中から最も文字数が長いものを採用（誤マッチを防ぐため）
                                         best_match_name = candidates['商品予定名'].str.len().idxmax()
                                         matched_rows = master_df.loc[[best_match_name]]
 
                                 if not matched_rows.empty:
                                     first_row = matched_rows.iloc[0]
+                                    # --- ▼修正点▼ ---
+                                    # 列名で直接データを取得（ヘッダーのスペース除去により、正しく動作）
                                     val_p = str(first_row['クラス分け名称4'])
                                     val_r = str(first_row['クラス分け名称5'])
+                                    # --- ▲修正点▲ ---
                                     if show_debug:
                                         st.success(f"✅ マッチ成功 ({match_type}): '{bento_name}' -> 名称4='{val_p}', 名称5='{val_r}'")
                                 else:
                                     if show_debug:
                                         st.warning(f"⚠️ マッチ失敗: '{bento_name}'")
-                                # --- ▲修正点▲ ---
                                 
                                 output_data.append([bento_name, bento_iri, val_p, val_r])
                             
@@ -244,3 +247,4 @@ if uploaded_pdf is not None:
                 )
         except Exception as e:
             st.error(f"Excelファイル生成中にエラーが発生しました: {str(e)}")
+            
