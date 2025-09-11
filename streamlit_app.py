@@ -37,7 +37,8 @@ def load_master_data(file_prefix, default_columns):
     encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
     for encoding in encodings:
         try:
-            df = pd.read_csv(latest_file, encoding=encoding)
+            # dtype=strを指定して、すべての列を文字列として読み込み、後で適切に変換
+            df = pd.read_csv(latest_file, encoding=encoding, dtype=str)
             if not df.empty:
                 return df
         except Exception:
@@ -45,6 +46,30 @@ def load_master_data(file_prefix, default_columns):
             
     # 全てのエンコーディングで読み込み失敗した場合
     return pd.DataFrame(columns=default_columns)
+
+# 値を安全に取得するヘルパー関数
+def safe_get_value(df, row_index, col_index):
+    """DataFrameから値を安全に取得し、NaN/None/空文字を適切に処理"""
+    try:
+        if row_index < len(df) and col_index < len(df.columns):
+            value = df.iloc[row_index, col_index]
+            
+            # pandas のNaN、None、空文字をチェック
+            if pd.isna(value) or value is None:
+                return ""
+            
+            # 文字列に変換してストリップ
+            str_value = str(value).strip()
+            
+            # "nan"や"NaN"という文字列もチェック
+            if str_value.lower() in ['nan', 'none', '']:
+                return ""
+            
+            return str_value
+        else:
+            return ""
+    except Exception:
+        return ""
 
 if 'master_df' not in st.session_state:
     # ファイルのプレフィックスを指定
@@ -118,6 +143,21 @@ if uploaded_pdf is not None:
             if debug_info.get('numbers_found'):
                 st.write("**検出された数値:**")
                 st.write(", ".join(debug_info['numbers_found'][:20]))  # 最初の20個まで表示
+            
+            # 商品マスタの情報もデバッグ表示
+            st.write("**商品マスタ情報:**")
+            master_df = st.session_state.master_df
+            if not master_df.empty:
+                st.write(f"商品マスタ行数: {len(master_df)}, 列数: {len(master_df.columns)}")
+                st.write(f"列名: {list(master_df.columns)}")
+                st.write("商品マスタサンプル:")
+                st.dataframe(master_df.head(3))
+                
+                # P列とR列の値をデバッグ表示
+                if len(master_df.columns) > 15:
+                    st.write(f"P列（16列目）の値サンプル: {master_df.iloc[:3, 15].tolist()}")
+                if len(master_df.columns) > 17:
+                    st.write(f"R列（18列目）の値サンプル: {master_df.iloc[:3, 17].tolist()}")
     
     df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
     with st.spinner("PDFからデータを抽出中..."):
@@ -193,12 +233,19 @@ if uploaded_pdf is not None:
                                 
                                 # 商品マスタのD列（商品予定名）で一致する行を検索
                                 if '商品予定名' in master_df.columns:
-                                    matched_row = master_df[master_df['商品予定名'] == bento_name]
-                                    # 一致する行があり、かつマスタに十分な列数が存在する場合
-                                    if not matched_row.empty and has_enough_columns:
-                                        # 最初に見つかった行のP列(16番目)とR列(18番目)の値を取得
-                                        val_p = matched_row.iloc[0, 15]
-                                        val_r = matched_row.iloc[0, 17]
+                                    # 完全一致で検索
+                                    matched_rows = master_df[master_df['商品予定名'] == bento_name]
+                                    
+                                    if not matched_rows.empty and has_enough_columns:
+                                        # 最初に見つかった行のインデックス
+                                        first_match_idx = matched_rows.index[0]
+                                        
+                                        # P列(16列目)とR列(18列目)の値を安全に取得
+                                        val_p = safe_get_value(master_df, first_match_idx, 15)
+                                        val_r = safe_get_value(master_df, first_match_idx, 17)
+                                        
+                                        if show_debug:
+                                            st.write(f"弁当名: {bento_name}, P列の値: '{val_p}', R列の値: '{val_r}'")
                                 
                                 # A, B, C, D列のデータをリストに追加
                                 output_data.append([bento_name, bento_iri, val_p, val_r])
