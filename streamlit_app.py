@@ -25,9 +25,9 @@ st.set_page_config(
 def load_master_data(file_prefix, default_columns):
     """
     最新の商品マスタCSVを読み込む。
-    - 全ての列を文字列として読み込む (dtype=str)
-    - 空のセルを空文字に変換 (fillna(''))
-    - 「商品予定名」列の前後の空白を自動で除去
+    - 全ての列を文字列として読み込む
+    - 空のセルを空文字に変換
+    - 「商品予定名」からスペースを完全除去したマッチング専用列を内部的に作成
     """
     list_of_files = glob.glob(os.path.join('.', f'{file_prefix}*.csv'))
     if not list_of_files:
@@ -39,14 +39,13 @@ def load_master_data(file_prefix, default_columns):
     for encoding in encodings:
         try:
             df = pd.read_csv(latest_file, encoding=encoding, dtype=str)
-            df = df.fillna('') # NaNを空文字に変換
-            
-            # --- ▼修正点▼ ---
-            # 「商品予定名」列が存在する場合、その列の値の前後の空白を除去する
+            df = df.fillna('')
             if '商品予定名' in df.columns:
                 df['商品予定名'] = df['商品予定名'].str.strip()
-            # --- ▲修正点▲ ---
-
+                # --- ▼修正点▼ ---
+                # 半角・全角スペースを全て除去したマッチング専用の列を追加
+                df['商品予定名_normalized'] = df['商品予定名'].str.replace(r'\s+', '', regex=True)
+                # --- ▲修正点▲ ---
             if not df.empty:
                 return df
         except Exception:
@@ -114,9 +113,10 @@ if uploaded_pdf is not None:
                             matched_list = match_bento_names(bento_list, st.session_state.master_df)
                             output_data = []
                             master_df = st.session_state.master_df
-                            has_enough_columns = len(master_df.columns) > 17
-                            col_p_name = master_df.columns[15] if has_enough_columns else '追加データC'
-                            col_r_name = master_df.columns[17] if has_enough_columns else '追加データD'
+                            
+                            has_enough_columns = len(master_df.columns) > 18
+                            col_p_name = master_df.columns[15] if len(master_df.columns) > 15 else '追加データC'
+                            col_s_name = master_df.columns[18] if has_enough_columns else '追加データD'
 
                             if show_debug:
                                 st.write("--- 弁当名マッチング状況 ---")
@@ -125,38 +125,34 @@ if uploaded_pdf is not None:
                                 bento_name, bento_iri = "", ""
                                 match = re.search(r' \(入数: (.+?)\)$', item)
                                 if match:
-                                    bento_name = item[:match.start()]
-                                    bento_iri = match.group(1)
+                                    bento_name, bento_iri = item[:match.start()], match.group(1)
                                 else:
                                     bento_name = item.replace(" (未マッチ)", "")
-
+                                
+                                val_p, val_s = "", ""
+                                
                                 # --- ▼修正点▼ ---
-                                # 弁当名から前後の空白を除去
-                                bento_name = bento_name.strip()
+                                # PDFから抽出した弁当名からも全てのスペースを除去して比較する
+                                normalized_bento_name = re.sub(r'\s+', '', bento_name)
+                                if '商品予定名_normalized' in master_df.columns:
+                                    matched_rows = master_df[master_df['商品予定名_normalized'] == normalized_bento_name]
                                 # --- ▲修正点▲ ---
-                                
-                                val_p, val_r = "", ""
-                                
-                                if '商品予定名' in master_df.columns:
-                                    matched_rows = master_df[master_df['商品予定名'] == bento_name]
                                     
                                     if not matched_rows.empty and has_enough_columns:
-                                        # --- ▼修正点▼ ---
-                                        # マッチした行から直接値を取得する、より確実な方法に変更
                                         first_row = matched_rows.iloc[0]
                                         val_p = str(first_row.iloc[15])
-                                        val_r = str(first_row.iloc[17])
-                                        # --- ▲修正点▲ ---
+                                        val_s = str(first_row.iloc[18])
                                         
                                         if show_debug:
-                                            st.success(f"✅ マッチ成功: '{bento_name}' -> P列='{val_p}', R列='{val_r}'")
+                                            st.success(f"✅ マッチ成功: '{bento_name}' (as '{normalized_bento_name}') -> P列='{val_p}', S列='{val_s}'")
                                     else:
                                         if show_debug:
-                                            st.warning(f"⚠️ マッチ失敗: '{bento_name}' は商品マスタに見つかりません。")
+                                            reason = "商品マスタに見つかりません。"
+                                            st.warning(f"⚠️ マッチ失敗: '{bento_name}' (as '{normalized_bento_name}') - {reason}")
                                 
-                                output_data.append([bento_name, bento_iri, val_p, val_r])
+                                output_data.append([bento_name, bento_iri, val_p, val_s])
                             
-                            df_bento_sheet = pd.DataFrame(output_data, columns=['商品予定名', 'パン箱入数', col_p_name, col_r_name])
+                            df_bento_sheet = pd.DataFrame(output_data, columns=['商品予定名', 'パン箱入数', col_p_name, col_s_name])
                             
                             if show_debug:
                                 st.write("--- 最終的な弁当データ ---")
@@ -165,7 +161,6 @@ if uploaded_pdf is not None:
             except Exception as e:
                 st.error(f"注文弁当データ処理中にエラーが発生しました: {str(e)}")
 
-            # クライアント情報の抽出 (変更なし)
             try:
                 client_data = extract_detailed_client_info_from_pdf(io.BytesIO(pdf_bytes_io.getvalue()))
                 if client_data:
@@ -173,7 +168,6 @@ if uploaded_pdf is not None:
             except Exception as e:
                 st.error(f"クライアント情報抽出中にエラーが発生しました: {str(e)}")
     
-    # Excelファイル生成処理 (変更なし)
     if df_paste_sheet is not None:
         try:
             with st.spinner("Excelファイルを作成中..."):
