@@ -6,19 +6,13 @@ import re
 from openpyxl import load_workbook
 import glob # globモジュールを追加
 
-# 既存の関数のみをインポート（新しい関数は後で追加）
+# すべての関数をインポート（既存 + 新しい関数）
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
     find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_names,
-    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe
+    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe,
+    improved_pdf_to_excel_data_for_paste_sheet, debug_pdf_content
 )
-
-# 新しい関数が利用可能かチェック
-try:
-    from pdf_utils import improved_pdf_to_excel_data_for_paste_sheet, debug_pdf_content
-    NEW_FUNCTIONS_AVAILABLE = True
-except ImportError:
-    NEW_FUNCTIONS_AVAILABLE = False
 
 # ページ設定 (アプリ全体に適用)
 st.set_page_config(
@@ -58,83 +52,6 @@ if 'master_df' not in st.session_state:
 if 'customer_master_df' not in st.session_state:
     # ファイルのプレフィックスを指定
     st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", ['得意先ＣＤ', '得意先名'])
-
-# 改善されたPDF抽出関数を定義（pdf_utils.pyに追加する前の一時的な解決策）
-def improved_pdf_extraction(pdf_bytes_io):
-    """数値抽出を改善したPDF処理"""
-    try:
-        import pdfplumber
-        
-        with pdfplumber.open(pdf_bytes_io) as pdf:
-            all_data = []
-            
-            for page in pdf.pages:
-                # 方法1: 通常のテキスト抽出
-                text = page.extract_text()
-                if text:
-                    lines = text.split('\n')
-                    for line in lines:
-                        if line.strip():
-                            # 複数のスペースで分割
-                            cells = re.split(r'\s{2,}', line.strip())
-                            if len(cells) > 1:  # 複数の列がある行のみ
-                                # 数値の処理を改善
-                                processed_cells = []
-                                for cell in cells:
-                                    cell = cell.strip()
-                                    # 数値パターンをチェック
-                                    if re.match(r'^[\d,.-]+$', cell):
-                                        try:
-                                            # カンマを除去して数値変換
-                                            if '.' in cell:
-                                                processed_cells.append(float(cell.replace(',', '')))
-                                            else:
-                                                processed_cells.append(int(cell.replace(',', '')))
-                                        except ValueError:
-                                            processed_cells.append(cell)
-                                    else:
-                                        processed_cells.append(cell)
-                                all_data.append(processed_cells)
-                
-                # 方法2: テーブル抽出も試行
-                try:
-                    tables = page.extract_tables()
-                    for table in tables:
-                        for row in table:
-                            if row and any(cell for cell in row if cell):  # 空でない行
-                                processed_row = []
-                                for cell in row:
-                                    if cell is None:
-                                        processed_row.append("")
-                                    elif isinstance(cell, str) and re.match(r'^[\d,.-]+$', cell.strip()):
-                                        try:
-                                            if '.' in cell:
-                                                processed_row.append(float(cell.replace(',', '')))
-                                            else:
-                                                processed_row.append(int(cell.replace(',', '')))
-                                        except ValueError:
-                                            processed_row.append(cell)
-                                    else:
-                                        processed_row.append(str(cell) if cell else "")
-                                all_data.append(processed_row)
-                except Exception:
-                    pass  # テーブル抽出に失敗しても続行
-            
-            if all_data:
-                # 最大列数に合わせる
-                max_cols = max(len(row) for row in all_data)
-                normalized_data = []
-                for row in all_data:
-                    while len(row) < max_cols:
-                        row.append("")
-                    normalized_data.append(row)
-                
-                return pd.DataFrame(normalized_data)
-            
-    except Exception as e:
-        st.error(f"改善された抽出でエラー: {e}")
-    
-    return None
 
 # --- PWAメタタグとサイドバーの見た目を制御 ---
 st.markdown("""
@@ -191,33 +108,62 @@ if uploaded_pdf is not None:
     nouhinsyo_wb = load_workbook(nouhinsyo_path)
     pdf_bytes_io = io.BytesIO(uploaded_pdf.getvalue())
     
+    # デバッグ情報の表示
+    if show_debug:
+        with st.expander("PDFデバッグ情報", expanded=True):
+            debug_info = debug_pdf_content(io.BytesIO(pdf_bytes_io.getvalue()))
+            st.json(debug_info)
+            
+            # 抽出された数値の表示
+            if debug_info.get('numbers_found'):
+                st.write("**検出された数値:**")
+                st.write(", ".join(debug_info['numbers_found'][:20]))  # 最初の20個まで表示
+    
     df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
     with st.spinner("PDFからデータを抽出中..."):
         try:
-            # まず改善された抽出を試行
+            # 改善された抽出方法を最初に試行
             if show_debug:
-                st.write("改善された抽出方法を試行中...")
+                st.info("🔄 改善された抽出方法を使用しています...")
             
-            df_paste_sheet = improved_pdf_extraction(io.BytesIO(pdf_bytes_io.getvalue()))
+            df_paste_sheet = improved_pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
             
-            # 失敗した場合は従来の方法にフォールバック
-            if df_paste_sheet is None or df_paste_sheet.empty:
-                if show_debug:
-                    st.write("従来の抽出方法にフォールバック...")
-                df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
-            
+            # 結果をチェック
             if df_paste_sheet is not None and not df_paste_sheet.empty:
-                st.success(f"✅ データを抽出しました（{len(df_paste_sheet)}行 × {len(df_paste_sheet.columns)}列）")
-                
-                if show_debug:
-                    st.write("抽出されたデータのプレビュー:")
-                    st.dataframe(df_paste_sheet.head(10))
+                st.success(f"✅ 改善された方法でデータを抽出しました（{len(df_paste_sheet)}行 × {len(df_paste_sheet.columns)}列）")
             else:
-                st.warning("⚠️ 抽出されたデータがありません")
+                # フォールバックを試行
+                if show_debug:
+                    st.warning("⚠️ 改善された方法が失敗。従来の方法を試行中...")
+                
+                df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
+                
+                if df_paste_sheet is not None and not df_paste_sheet.empty:
+                    st.success(f"✅ 従来の方法でデータを抽出しました（{len(df_paste_sheet)}行 × {len(df_paste_sheet.columns)}列）")
+                else:
+                    st.warning("⚠️ データの抽出に失敗しました")
+            
+            # 抽出されたデータのプレビュー
+            if df_paste_sheet is not None and not df_paste_sheet.empty and show_debug:
+                st.write("**抽出されたデータのプレビュー:**")
+                st.dataframe(df_paste_sheet.head(10))
+                
+                # 数値列の検出
+                numeric_cols = []
+                for col in df_paste_sheet.columns:
+                    if df_paste_sheet[col].dtype in ['int64', 'float64']:
+                        numeric_cols.append(col)
+                
+                if numeric_cols:
+                    st.write(f"**数値として認識された列:** {numeric_cols}")
+                else:
+                    st.write("**注意:** 数値列が検出されませんでした")
                 
         except Exception as e:
             df_paste_sheet = None
             st.error(f"PDFからの貼り付け用データ抽出中にエラーが発生しました: {str(e)}")
+            if show_debug:
+                st.exception(e)
 
         if df_paste_sheet is not None:
             # 注文弁当データの抽出
@@ -268,8 +214,15 @@ if uploaded_pdf is not None:
                             
                             # 4列構成でDataFrameを作成
                             df_bento_sheet = pd.DataFrame(output_data, columns=['商品予定名', 'パン箱入数', col_p_name, col_r_name])
+                            
+                            if show_debug:
+                                st.write("**弁当データの抽出結果:**")
+                                st.dataframe(df_bento_sheet)
+                                
             except Exception as e:
                 st.error(f"注文弁当データ処理中にエラーが発生しました: {str(e)}")
+                if show_debug:
+                    st.exception(e)
 
             # クライアント情報の抽出
             try:
@@ -277,8 +230,15 @@ if uploaded_pdf is not None:
                 if client_data:
                     df_client_sheet = export_detailed_client_data_to_dataframe(client_data)
                     st.success(f"クライアント情報 {len(client_data)} 件を抽出しました")
+                    
+                    if show_debug:
+                        st.write("**クライアント情報の抽出結果:**")
+                        st.dataframe(df_client_sheet)
+                        
             except Exception as e:
                 st.error(f"クライアント情報抽出中にエラーが発生しました: {str(e)}")
+                if show_debug:
+                    st.exception(e)
     
     if df_paste_sheet is not None:
         try:
@@ -327,8 +287,30 @@ if uploaded_pdf is not None:
             
             col1, col2 = st.columns(2)
             with col1:
-                st.download_button(label="▼　数出表ダウンロード", data=macro_excel_bytes, file_name=f"{original_pdf_name}_数出表.xlsm", mime="application/vnd.ms-excel.sheet.macroEnabled.12")
+                st.download_button(
+                    label="▼　数出表ダウンロード", 
+                    data=macro_excel_bytes, 
+                    file_name=f"{original_pdf_name}_数出表.xlsm", 
+                    mime="application/vnd.ms-excel.sheet.macroEnabled.12"
+                )
             with col2:
-                st.download_button(label="▼　納品書ダウンロード", data=data_only_excel_bytes, file_name=f"{original_pdf_name}_納品書.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button(
+                    label="▼　納品書ダウンロード", 
+                    data=data_only_excel_bytes, 
+                    file_name=f"{original_pdf_name}_納品書.xlsx", 
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
+            # デバッグ情報として最終結果を表示
+            if show_debug:
+                st.write("### 処理完了サマリー")
+                st.write(f"- 抽出データ: {len(df_paste_sheet)}行 × {len(df_paste_sheet.columns)}列")
+                if df_bento_sheet is not None:
+                    st.write(f"- 弁当データ: {len(df_bento_sheet)}件")
+                if df_client_sheet is not None:
+                    st.write(f"- クライアント情報: {len(df_client_sheet)}件")
+                
         except Exception as e:
             st.error(f"Excelファイル生成中にエラーが発生しました: {str(e)}")
+            if show_debug:
+                st.exception(e)
