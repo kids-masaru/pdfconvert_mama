@@ -19,7 +19,82 @@ def safe_write_df(worksheet, df, start_row=1):
             worksheet.cell(row=r_idx, column=c_idx, value=value)
 
 # ──────────────────────────────────────────────
-# PDF解析・データ抽出関数群
+# ▼ここから修正▼ 弁当データマッチング関数
+# ──────────────────────────────────────────────
+def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List[List[str]]:
+    """
+    PDFから抽出した弁当名リストを商品マスタと照合し、
+    [弁当名, パン箱入数, クラス分け名称4, クラス分け名称5] のリストを返す。
+    """
+    if master_df is None or master_df.empty:
+        return [[name, "", "", ""] for name in pdf_bento_list]
+
+    # --- CSVヘッダーのスペース問題をここで吸収 ---
+    master_df.columns = master_df.columns.str.strip()
+
+    required_cols = ['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5']
+    if not all(col in master_df.columns for col in required_cols):
+        # 1つでも足りない列があれば、エラーを示すデータを返す
+        missing_cols = ", ".join([col for col in required_cols if col not in master_df.columns])
+        return [[name, "", f"マスタに列なし: {missing_cols}", ""] for name in pdf_bento_list]
+    
+    # 必要な列だけを抽出し、文字列に変換して安全なタプルリストを作成
+    master_tuples = master_df[required_cols].astype(str).to_records(index=False).tolist()
+
+    matched_results = []
+    
+    # マッチング用の正規化済みマスタリストを作成
+    # (正規化名, 元の名前, パン箱入数, 名称4, 名称5)
+    norm_master = [
+        (
+            unicodedata.normalize('NFKC', name).replace(" ", ""),
+            name,
+            pan_box,
+            class_4,
+            class_5
+        )
+        for name, pan_box, class_4, class_5 in master_tuples
+    ]
+
+    for pdf_name in pdf_bento_list:
+        pdf_name_stripped = pdf_name.strip()
+        norm_pdf = unicodedata.normalize('NFKC', pdf_name_stripped).replace(" ", "")
+        
+        found_match = False
+        result_data = [pdf_name_stripped, "", "", ""]
+
+        # --- マッチングロジック（完全一致を優先） ---
+        best_match = None
+        for norm_m, orig_m, pan_box, c4, c5 in norm_master:
+            if norm_m == norm_pdf:
+                best_match = [orig_m, pan_box, c4, c5]
+                break
+        
+        # 完全一致がなければ部分一致を試す
+        if not best_match:
+            # PDF名がマスタ名に含まれるケース (例: PDF="めん給食", Master="めん給食 園児")
+            candidates = []
+            for norm_m, orig_m, pan_box, c4, c5 in norm_master:
+                 if norm_pdf in norm_m:
+                    candidates.append((orig_m, pan_box, c4, c5))
+            if candidates:
+                # 最も文字数が近いものを採用
+                best_match = min(candidates, key=lambda x: abs(len(x[0]) - len(pdf_name_stripped)))
+
+        if best_match:
+            result_data = best_match # [名前, 入数, 名称4, 名称5]
+        
+        matched_results.append(result_data)
+        
+    return matched_results
+
+# ──────────────────────────────────────────────
+# ▲ここまで修正▲
+# ──────────────────────────────────────────────
+
+
+# ──────────────────────────────────────────────
+# PDF解析・データ抽出関数群 (ここは変更なし)
 # ──────────────────────────────────────────────
 def extract_detailed_client_info_from_pdf(pdf_file_obj):
     client_data = []
@@ -53,7 +128,6 @@ def extract_detailed_client_info_from_pdf(pdf_file_obj):
                     client_info = extract_meal_numbers_from_row(rows, len(rows) - 1, current_client_id, current_client_name)
                     if client_info: client_data.append(client_info)
     except Exception:
-        # エラーメッセージは呼び出し元で表示
         pass
     return client_data
 
@@ -159,11 +233,7 @@ def post_process_rows(rows: List[List[str]]) -> List[List[str]]:
                 new_rows[i-1][j] = ""
     return new_rows
 
-# ──────────────────────────────────────────────
-# 【改善】数値抽出を強化したメイン関数
-# ──────────────────────────────────────────────
 def pdf_to_excel_data_for_paste_sheet(pdf_file):
-    """元のロジック + 数値抽出の改善"""
     try:
         with pdfplumber.open(pdf_file) as pdf:
             if not pdf.pages: return None
@@ -175,13 +245,9 @@ def pdf_to_excel_data_for_paste_sheet(pdf_file):
             rows = remove_extra_empty_columns(rows)
             if not rows: return None
             
-            # 【新機能】数値の正規化処理を追加
             improved_rows = []
             for row in rows:
-                improved_row = []
-                for cell in row:
-                    improved_cell = improve_number_extraction(str(cell))
-                    improved_row.append(improved_cell)
+                improved_row = [improve_number_extraction(str(cell)) for cell in row]
                 improved_rows.append(improved_row)
             
             max_cols = max(len(row) for row in improved_rows)
@@ -190,85 +256,39 @@ def pdf_to_excel_data_for_paste_sheet(pdf_file):
     except Exception:
         return None
 
-# ──────────────────────────────────────────────
-# 【新機能】数値抽出改善のヘルパー関数
-# ──────────────────────────────────────────────
 def improve_number_extraction(cell_text):
-    """セル内の文字列から数値を改善して抽出"""
-    if not cell_text or not str(cell_text).strip():
-        return cell_text
-    
+    if not cell_text or not str(cell_text).strip(): return cell_text
     cell_str = str(cell_text).strip()
-    
-    # 数値パターンのチェック
-    # 1. カンマ区切りの数値（例：1,000, 2,500）
     if re.match(r'^\d{1,3}(,\d{3})*$', cell_str):
-        try:
-            return int(cell_str.replace(',', ''))
-        except ValueError:
-            pass
-    
-    # 2. 小数点を含む数値（例：123.45）
+        try: return int(cell_str.replace(',', ''))
+        except ValueError: pass
     elif re.match(r'^\d+\.\d+$', cell_str):
-        try:
-            return float(cell_str)
-        except ValueError:
-            pass
-    
-    # 3. 整数（例：123）
+        try: return float(cell_str)
+        except ValueError: pass
     elif re.match(r'^\d+$', cell_str):
-        try:
-            return int(cell_str)
-        except ValueError:
-            pass
-    
-    # 4. 数値っぽいが他の文字が混在している場合、数値部分のみ抽出を試行
+        try: return int(cell_str)
+        except ValueError: pass
     number_match = re.search(r'\d{1,3}(,\d{3})*(\.\d+)?', cell_str)
     if number_match:
         number_part = number_match.group(0)
         try:
-            if '.' in number_part:
-                extracted_number = float(number_part.replace(',', ''))
-            else:
-                extracted_number = int(number_part.replace(',', ''))
-            # ただし、元の文字列がほとんど数値で構成されている場合のみ置換
-            if len(number_part) / len(cell_str) > 0.7:  # 70%以上が数値
-                return extracted_number
-        except ValueError:
-            pass
-    
-    # 数値として認識できない場合は元の文字列を返す
+            if '.' in number_part: extracted_number = float(number_part.replace(',', ''))
+            else: extracted_number = int(number_part.replace(',', ''))
+            if len(number_part) / len(cell_str) > 0.7: return extracted_number
+        except ValueError: pass
     return cell_text
 
-# ──────────────────────────────────────────────
-# 【追加】デバッグ用関数
-# ──────────────────────────────────────────────
 def debug_pdf_content(pdf_bytes_io) -> dict:
-    """PDFの内容をデバッグ用に詳細表示"""
-    debug_info = {
-        'pages': 0,
-        'total_chars': 0,
-        'numbers_found': [],
-        'text_sample': ""
-    }
-    
+    debug_info = {'pages': 0, 'total_chars': 0, 'numbers_found': [], 'text_sample': ""}
     try:
         with pdfplumber.open(pdf_bytes_io) as pdf:
             debug_info['pages'] = len(pdf.pages)
-            
             for i, page in enumerate(pdf.pages):
-                # 文字レベルの情報
                 words = page.extract_words()
                 debug_info['total_chars'] += len(words) if words else 0
-                
-                # テキスト抽出のサンプル
                 text = page.extract_text() or ""
-                if i == 0:  # 最初のページのサンプル
-                    debug_info['text_sample'] = text[:500]
-                
-                # 数値の検出
+                if i == 0: debug_info['text_sample'] = text[:500]
                 numbers = re.findall(r'\d{1,3}(,\d{3})*(\.\d+)?|\d+', text)
-                # タプルの場合は最初の要素を使用
                 clean_numbers = []
                 for num in numbers:
                     if isinstance(num, tuple):
@@ -276,15 +296,10 @@ def debug_pdf_content(pdf_bytes_io) -> dict:
                     else:
                         clean_numbers.append(num)
                 debug_info['numbers_found'].extend(clean_numbers)
-    
     except Exception as e:
         debug_info['error'] = str(e)
-    
     return debug_info
 
-# ──────────────────────────────────────────────
-# 元の弁当関連の関数はそのまま維持
-# ──────────────────────────────────────────────
 def extract_table_from_pdf_for_bento(pdf_file_obj):
     tables = []
     with pdfplumber.open(pdf_file_obj) as pdf:
@@ -328,25 +343,4 @@ def extract_bento_range_for_bento(table, start_col):
             bento_list.append(str(cell_text).strip())
     return bento_list
 
-def match_bento_names(pdf_bento_list, master_df):
-    if master_df is None or master_df.empty: return [f"{name} (マスタなし)" for name in pdf_bento_list]
-    master_tuples = master_df[['商品予定名', 'パン箱入数']].dropna().to_records(index=False).tolist()
-    matched = []
-    norm_master = [(unicodedata.normalize('NFKC', str(n)).replace(" ", ""), str(n), str(v)) for n, v in master_tuples]
-    for pdf_name in pdf_bento_list:
-        norm_pdf = unicodedata.normalize('NFKC', str(pdf_name)).replace(" ", "")
-        found_match, found_name, found_id = False, None, None
-        for norm_m, orig_m, m_id in norm_master:
-            if norm_m.startswith(norm_pdf):
-                found_name, found_id, found_match = orig_m, m_id, True
-                break
-        if not found_match:
-             for norm_m, orig_m, m_id in norm_master:
-                if norm_pdf in norm_m:
-                    found_name, found_id, found_match = orig_m, m_id, True
-                    break
-        if found_match:
-            matched.append(f"{found_name} (入数: {found_id})")
-        else:
-            matched.append(f"{pdf_name} (未マッチ)")
-    return matched
+# --- 従来の `match_bento_names` は新しい `match_bento_data` に置き換えられたため、削除 ---
