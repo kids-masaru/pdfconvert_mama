@@ -29,12 +29,12 @@ def load_master_data(file_prefix, default_columns):
     if not list_of_files:
         return pd.DataFrame(columns=default_columns)
     latest_file = max(list_of_files, key=os.path.getmtime)
-    required_cols = ['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5']
-    if not all(col in master_df.columns for col in required_cols):
+    encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
     for encoding in encodings:
         try:
             df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna('')
-            if not df.empty: return df
+            if not df.empty: 
+                return df
         except Exception:
             continue
     return pd.DataFrame(columns=default_columns)
