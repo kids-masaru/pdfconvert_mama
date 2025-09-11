@@ -6,12 +6,11 @@ import re
 from openpyxl import load_workbook
 import glob
 
-# pdf_utils.py から必要な関数をインポート
+# pdf_utils.py から、新しくなった `match_bento_data` をインポート
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
-    find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_names,
-    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe,
-    debug_pdf_content
+    find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_data, # 変更点
+    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe
 )
 
 # ページ設定 (アプリ全体に適用)
@@ -23,40 +22,21 @@ st.set_page_config(
 
 # --- Session Stateの初期化 ---
 def load_master_data(file_prefix, default_columns):
-    """
-    最新の商品マータCSVを読み込む。
-    - 全ての列を文字列として読み込む
-    - 空のセルを空文字に変換
-    - ★★ヘッダー名の前後の空白を自動除去★★
-    """
     list_of_files = glob.glob(os.path.join('.', f'{file_prefix}*.csv'))
     if not list_of_files:
         return pd.DataFrame(columns=default_columns)
-
     latest_file = max(list_of_files, key=os.path.getmtime)
-    
     encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
     for encoding in encodings:
         try:
-            df = pd.read_csv(latest_file, encoding=encoding, dtype=str)
-            df = df.fillna('')
-            
-            # --- ▼修正点▼ ---
-            # CSVの列名（ヘッダー）に含まれる余分なスペースを除去する
-            df.columns = df.columns.str.strip()
-            # --- ▲修正点▲ ---
-
-            if '商品予定名' in df.columns:
-                df['商品予定名'] = df['商品予定名'].str.strip()
-            if not df.empty:
-                return df
+            df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna('')
+            if not df.empty: return df
         except Exception:
             continue
-            
     return pd.DataFrame(columns=default_columns)
 
 if 'master_df' not in st.session_state:
-    st.session_state.master_df = load_master_data("商品マスタ一覧", ['商品予定名', 'パン箱入数', '商品名'])
+    st.session_state.master_df = load_master_data("商品マスタ一覧", ['商品予定名', 'パン箱入数', '商品名', 'クラス分け名称4', 'クラス分け名称5'])
 if 'customer_master_df' not in st.session_state:
     st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", ['得意先ＣＤ', '得意先名'])
 
@@ -76,9 +56,7 @@ st.markdown("""
 st.sidebar.title("メニュー")
 st.sidebar.page_link("streamlit_app.py", label="PDF Excel 変換", icon="📄")
 st.sidebar.page_link("pages/マスタ設定.py", label="マスタ設定", icon="⚙️")
-
 st.markdown('<p class="custom-title">数出表 PDF変換ツール</p>', unsafe_allow_html=True)
-
 show_debug = st.sidebar.checkbox("デバッグ情報を表示", value=False)
 uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf", label_visibility="collapsed")
 
@@ -112,66 +90,13 @@ if uploaded_pdf is not None:
                     if anchor_col != -1:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
-                            matched_list_from_util = match_bento_names(bento_list, st.session_state.master_df)
-                            output_data = []
-                            master_df = st.session_state.master_df
+                            # --- ▼修正点▼ ---
+                            # 強化された `match_bento_data` を呼び出すだけ
+                            matched_data = match_bento_data(bento_list, st.session_state.master_df)
                             
-                            required_cols = ['クラス分け名称4', 'クラス分け名称5', '商品予定名']
-                            if not all(col in master_df.columns for col in required_cols):
-                                st.error(f"エラー: 商品マスタに必要な列 {required_cols} が見つかりません。")
-                                st.stop()
-
-                            if show_debug:
-                                st.write("--- 弁当名マッチング状況 ---")
-
-                            for item in matched_list_from_util:
-                                bento_name, bento_iri = "", ""
-                                # --- ▼修正点▼ ---
-                                # B列（パン箱入数）の取得ロジックを安定版に戻しました
-                                match = re.search(r' \(入数: (.+?)\)$', item)
-                                if match:
-                                    bento_name = item[:match.start()].strip()
-                                    bento_iri = match.group(1).strip()
-                                else:
-                                    bento_name = item.replace(" (未マッチ)", "").strip()
-                                # --- ▲修正点▲ ---
-                                
-                                val_p, val_r = "", ""
-                                
-                                # 2段階のマッチングロジック（まず完全一致、だめなら部分一致）
-                                matched_rows = master_df[master_df['商品予定名'] == bento_name]
-                                match_type = "完全一致"
-
-                                if matched_rows.empty:
-                                    match_type = "部分一致"
-                                    normalized_bento_name = re.sub(r'\s+', '', bento_name)
-                                    # 部分一致する候補をマスタから探す
-                                    master_df['temp_match'] = master_df['商品予定名'].apply(lambda x: x in normalized_bento_name)
-                                    candidates = master_df[master_df['temp_match']]
-                                    
-                                    if not candidates.empty:
-                                        best_match_name = candidates['商品予定名'].str.len().idxmax()
-                                        matched_rows = master_df.loc[[best_match_name]]
-
-                                if not matched_rows.empty:
-                                    first_row = matched_rows.iloc[0]
-                                    # --- ▼修正点▼ ---
-                                    # 列名で直接データを取得（ヘッダーのスペース除去により、正しく動作）
-                                    val_p = str(first_row['クラス分け名称4'])
-                                    val_r = str(first_row['クラス分け名称5'])
-                                    # --- ▲修正点▲ ---
-                                    if show_debug:
-                                        st.success(f"✅ マッチ成功 ({match_type}): '{bento_name}' -> 名称4='{val_p}', 名称5='{val_r}'")
-                                else:
-                                    if show_debug:
-                                        st.warning(f"⚠️ マッチ失敗: '{bento_name}'")
-                                
-                                output_data.append([bento_name, bento_iri, val_p, val_r])
-                            
-                            if 'temp_match' in master_df.columns:
-                                master_df.drop(columns=['temp_match'], inplace=True)
-
-                            df_bento_sheet = pd.DataFrame(output_data, columns=['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5'])
+                            # 返ってきた整形済みのデータから直接DataFrameを作成
+                            df_bento_sheet = pd.DataFrame(matched_data, columns=['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5'])
+                            # --- ▲修正点▲ ---
                             
                             if show_debug:
                                 st.write("--- 最終的な弁当データ ---")
@@ -247,4 +172,3 @@ if uploaded_pdf is not None:
                 )
         except Exception as e:
             st.error(f"Excelファイル生成中にエラーが発生しました: {str(e)}")
-            
