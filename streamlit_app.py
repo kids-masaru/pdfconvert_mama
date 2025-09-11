@@ -109,6 +109,8 @@ if uploaded_pdf is not None:
                                 
                                 # マスタから実際にマッチした行を表示
                                 st.write("**🔎 マッチした行の詳細確認:**")
+                                master_df = st.session_state.master_df
+                                
                                 for i, data in enumerate(matched_data, 1):
                                     st.write(f"**{i}. {data[0]}**")
                                     st.write(f"   - パン箱入数: `{data[1]}`")
@@ -117,26 +119,46 @@ if uploaded_pdf is not None:
                                     
                                     # この商品がマスタのどの行とマッチしたかを確認
                                     original_name = bento_list[i-1]  # 元のPDF名
-                                    matched_rows = st.session_state.master_df[
-                                        st.session_state.master_df['商品予定名'].str.contains(data[0], na=False) |
-                                        st.session_state.master_df['商品予定名'].str.contains(original_name, na=False)
-                                    ]
+                                    
+                                    # 実際の列名を使って検索（文字化け対応）
+                                    matched_rows = pd.DataFrame()
+                                    
+                                    # 全ての列で商品名を検索
+                                    for col in master_df.columns:
+                                        if master_df[col].dtype == 'object':  # 文字列列のみ
+                                            temp_matches = master_df[
+                                                master_df[col].astype(str).str.contains(data[0], na=False, regex=False) |
+                                                master_df[col].astype(str).str.contains(original_name, na=False, regex=False)
+                                            ]
+                                            if not temp_matches.empty:
+                                                matched_rows = temp_matches
+                                                break
                                     
                                     if not matched_rows.empty:
-                                        st.write(f"   **📋 マッチしたマスタ行:**")
-                                        # 関連する列のみ表示
-                                        cols_to_show = ['商品予定名', 'パン箱入数']
-                                        # P列とR列も追加
-                                        if len(st.session_state.master_df.columns) >= 16:
-                                            cols_to_show.append(st.session_state.master_df.columns[15])
-                                        if len(st.session_state.master_df.columns) >= 18:
-                                            cols_to_show.append(st.session_state.master_df.columns[17])
+                                        st.write(f"   **📋 マッチしたマスタ行（全列表示）:**")
+                                        st.dataframe(matched_rows.head(1))  # 最初の1行のみ
                                         
-                                        # 存在する列のみフィルタ
-                                        available_cols = [col for col in cols_to_show if col in st.session_state.master_df.columns]
-                                        st.dataframe(matched_rows[available_cols])
+                                        # P列（16列目）とR列（18列目）の値を確認
+                                        if len(master_df.columns) >= 16:
+                                            p_val = matched_rows.iloc[0, 15] if not matched_rows.empty else "なし"
+                                            st.write(f"   **P列（16列目）の値:** `{p_val}`")
+                                            
+                                        if len(master_df.columns) >= 18:
+                                            r_val = matched_rows.iloc[0, 17] if not matched_rows.empty else "なし"
+                                            st.write(f"   **R列（18列目）の値:** `{r_val}`")
                                     else:
                                         st.write(f"   ⚠️ マスタで該当行が見つかりません")
+                                        # 部分一致で再検索
+                                        st.write(f"   🔍 部分一致検索中...")
+                                        for col in master_df.columns:
+                                            if master_df[col].dtype == 'object':
+                                                partial_matches = master_df[
+                                                    master_df[col].astype(str).str.contains(original_name[:3] if len(original_name) > 3 else original_name, na=False, regex=False)
+                                                ]
+                                                if not partial_matches.empty:
+                                                    st.write(f"   **部分一致発見 (列: {col}):**")
+                                                    st.dataframe(partial_matches.head(2))
+                                                    break
                                 
                                 st.divider()
                             
