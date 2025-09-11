@@ -4,6 +4,7 @@ import io
 import os
 import re
 from openpyxl import load_workbook
+import glob # globモジュールを追加
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
     find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_names,
@@ -18,22 +19,37 @@ st.set_page_config(
 )
 
 # --- Session Stateの初期化 ---
-def load_master_data(file_path, default_columns):
-    if os.path.exists(file_path):
-        encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
-        for encoding in encodings:
-            try:
-                df = pd.read_csv(file_path, encoding=encoding)
-                if not df.empty:
-                    return df
-            except Exception:
-                continue
+def load_master_data(file_prefix, default_columns):
+    # 指定されたプレフィックスで始まるCSVファイルを検索
+    # os.path.joinを使ってパスを安全に結合
+    list_of_files = glob.glob(os.path.join('.', f'{file_prefix}*.csv'))
+    
+    # ファイルが見つからなかった場合
+    if not list_of_files:
+        return pd.DataFrame(columns=default_columns)
+
+    # タイムスタンプ（最終更新日）でソートし、最新のファイルを選択
+    latest_file = max(list_of_files, key=os.path.getmtime)
+    
+    encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
+    for encoding in encodings:
+        try:
+            df = pd.read_csv(latest_file, encoding=encoding)
+            if not df.empty:
+                return df
+        except Exception:
+            continue
+            
+    # 全てのエンコーディングで読み込み失敗した場合
     return pd.DataFrame(columns=default_columns)
 
 if 'master_df' not in st.session_state:
-    st.session_state.master_df = load_master_data("商品マスタ一覧.csv", ['商品予定名', 'パン箱入数', '商品名'])
+    # ファイルのプレフィックスを指定
+    st.session_state.master_df = load_master_data("商品マスタ一覧", ['商品予定名', 'パン箱入数', '商品名'])
 if 'customer_master_df' not in st.session_state:
-    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧.csv", ['得意先ＣＤ', '得意先名'])
+    # ファイルのプレフィックスを指定
+    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", ['得意先ＣＤ', '得意先名'])
+
 
 # --- PWAメタタグとサイドバーの見た目を制御 ---
 st.markdown("""
