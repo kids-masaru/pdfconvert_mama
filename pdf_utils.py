@@ -29,7 +29,7 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
     # --- ★最重要：CSVの全ヘッダー名から見えないスペースを除去 ---
     master_df.columns = master_df.columns.str.strip()
 
-    required_cols = ["商品予定名", "パン箱入数", "クラス分け名称4", "クラス分け名称5"]
+    required_cols = ["商品予定名", "パン箱入数", "売価単価", "弁当区分"]
     
     # デバッグ出力: master_dfの実際のカラム名を表示
     print("--- master_df columns in match_bento_data ---")
