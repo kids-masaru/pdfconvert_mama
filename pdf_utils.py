@@ -112,18 +112,10 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
                         
                         # 部分一致チェック
                         if norm_master and norm_master in norm_pdf:
-                            # 同様の処理で値を取得
-                            pan_box = ""
-                            for potential_pan_col in [2, 6, 7, 8, 9, 10]:
-                                if len(row) > potential_pan_col:
-                                    potential_value = str(row.iloc[potential_pan_col]).strip()
-                                    if potential_value and potential_value.isdigit():
-                                        if potential_value not in ["88", "1", "0"]:
-                                            pan_box = potential_value
-                                            break
-                            
-                            class4 = str(row.iloc[15]) if len(row) > 15 and str(row.iloc[15]).strip() != 'nan' else ""
-                            class5 = str(row.iloc[17]) if len(row) > 17 and str(row.iloc[17]).strip() != 'nan' else ""
+                            # 同様の処理で正しい列番号を使用
+                            pan_box = str(row.iloc[1]) if len(row) > 1 and str(row.iloc[1]).strip() != 'nan' else ""
+                            class4 = str(row.iloc[4]) if len(row) > 4 and str(row.iloc[4]).strip() != 'nan' else ""
+                            class5 = str(row.iloc[5]) if len(row) > 5 and str(row.iloc[5]).strip() != 'nan' else ""
                             
                             best_match = [cell_value, pan_box, class4, class5]
                             break
