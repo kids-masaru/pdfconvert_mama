@@ -30,13 +30,17 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
     """
     PDFから抽出した弁当名リストを商品マスタと照合し、
     [弁当名, パン箱入数, クラス分け名称4, クラス分け名称5] のリストを返す。
-    CSVヘッダーのスペース問題と文字化け問題もここで吸収する。
+    列番号を修正して正しいデータを取得する。
     """
     if master_df is None or master_df.empty:
         return [[name, "", "", ""] for name in pdf_bento_list]
 
-    # --- CSVヘッダーのスペース問題をここで吸収 ---
+    # CSVヘッダーのスペース問題を修正
     master_df.columns = master_df.columns.str.strip()
+    
+    # デバッグ：列数と列名を確認
+    print(f"マスタの列数: {len(master_df.columns)}")
+    print(f"列名一覧: {list(master_df.columns)}")
     
     if len(master_df.columns) < 18:
         return [[name, "", "マスタ列不足: 必要な列数が不足", ""] for name in pdf_bento_list]
@@ -52,20 +56,47 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
         # 全ての行を検索してマッチするものを探す
         best_match = None
         for idx, row in master_df.iterrows():
-            # 各列で商品名を検索
-            for col_idx in range(min(5, len(master_df.columns))):  # 最初の5列で検索
+            # 各列で商品名を検索（最初の5列）
+            for col_idx in range(min(5, len(master_df.columns))):
                 cell_value = str(row.iloc[col_idx]).strip()
                 if cell_value and cell_value != 'nan':
                     norm_master = unicodedata.normalize('NFKC', cell_value).replace(" ", "")
                     
                     # 完全一致チェック
                     if norm_master == norm_pdf:
-                        # マッチした場合、その行の各列の値を取得
-                        pan_box = str(row.iloc[4]) if len(row) > 4 else ""  # E列想定
-                        class4 = str(row.iloc[15]) if len(row) > 15 else ""  # P列想定  
-                        class5 = str(row.iloc[17]) if len(row) > 17 else ""  # R列想定
+                        # ** 修正：正しい列番号を使用 **
+                        # パン箱入数は第2画像から推測すると、もっと後の列にありそう
+                        # 一旦全ての列を確認して「パン箱入数」または数値24が含まれる列を探す
+                        
+                        # 暫定的に異なる列番号を試してみる
+                        pan_box = ""
+                        class4 = ""  
+                        class5 = ""
+                        
+                        # パン箱入数を探す（数値が入っている可能性の高い列を順次チェック）
+                        for potential_pan_col in [2, 6, 7, 8, 9, 10]:  # 様々な列を試す
+                            if len(row) > potential_pan_col:
+                                potential_value = str(row.iloc[potential_pan_col]).strip()
+                                if potential_value and potential_value.isdigit():
+                                    # デバッグ出力
+                                    print(f"商品名: {cell_value}, 列{potential_pan_col}: {potential_value}")
+                                    if potential_value not in ["88", "1", "0"]:  # 明らかに単価でない値
+                                        pan_box = potential_value
+                                        break
+                        
+                        # クラス分け名称4, 5（P列、R列相当を探す）
+                        if len(row) > 15:
+                            class4 = str(row.iloc[15]) if str(row.iloc[15]).strip() != 'nan' else ""
+                        if len(row) > 17:
+                            class5 = str(row.iloc[17]) if str(row.iloc[17]).strip() != 'nan' else ""
                         
                         best_match = [cell_value, pan_box, class4, class5]
+                        
+                        # デバッグ出力
+                        print(f"マッチした商品: {cell_value}")
+                        print(f"  行の全データ: {list(row)}")
+                        print(f"  取得結果: パン箱={pan_box}, クラス4={class4}, クラス5={class5}")
+                        
                         break
                         
             if best_match:
@@ -79,11 +110,20 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
                     if cell_value and cell_value != 'nan':
                         norm_master = unicodedata.normalize('NFKC', cell_value).replace(" ", "")
                         
-                        # 部分一致チェック (マスタ名がPDF名に含まれる)
+                        # 部分一致チェック
                         if norm_master and norm_master in norm_pdf:
-                            pan_box = str(row.iloc[4]) if len(row) > 4 else ""
-                            class4 = str(row.iloc[15]) if len(row) > 15 else ""
-                            class5 = str(row.iloc[17]) if len(row) > 17 else ""
+                            # 同様の処理で値を取得
+                            pan_box = ""
+                            for potential_pan_col in [2, 6, 7, 8, 9, 10]:
+                                if len(row) > potential_pan_col:
+                                    potential_value = str(row.iloc[potential_pan_col]).strip()
+                                    if potential_value and potential_value.isdigit():
+                                        if potential_value not in ["88", "1", "0"]:
+                                            pan_box = potential_value
+                                            break
+                            
+                            class4 = str(row.iloc[15]) if len(row) > 15 and str(row.iloc[15]).strip() != 'nan' else ""
+                            class5 = str(row.iloc[17]) if len(row) > 17 and str(row.iloc[17]).strip() != 'nan' else ""
                             
                             best_match = [cell_value, pan_box, class4, class5]
                             break
