@@ -61,7 +61,7 @@ st.markdown("""
 st.sidebar.title("メニュー")
 st.sidebar.page_link("streamlit_app.py", label="PDF Excel 変換", icon="📄")
 st.sidebar.page_link("pages/マスタ設定.py", label="マスタ設定", icon="⚙️")
-st.markdown("<p class="custom-title">数出表 PDF変換ツール</p>", unsafe_allow_html=True)
+st.markdown('<p class="custom-title">数出表 PDF変換ツール</p>', unsafe_allow_html=True)
 show_debug = st.sidebar.checkbox("デバッグ情報を表示", value=True) # デフォルトでTrueに変更
 uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf", label_visibility="collapsed")
 
