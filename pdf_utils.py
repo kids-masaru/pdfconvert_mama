@@ -23,6 +23,7 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
     CSVのヘッダー問題を吸収し、安全な列名でデータを取得する。
     """
     if master_df is None or master_df.empty:
+        print("--- master_df is None or empty ---") # デバッグ出力
         return [[name, "", "", ""] for name in pdf_bento_list]
 
     # --- ★最重要：CSVの全ヘッダー名から見えないスペースを除去 ---
@@ -40,13 +41,17 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
         return [[name, "", f"マスタ列不足: {missing}", ""] for name in pdf_bento_list]
     
     # 必要な列のデータを安全に抽出
-    master_tuples = master_df[required_cols].astype(str).to_records(index=False).tolist()
+    # 修正箇所: to_recordsの代わりにapplyとtupleを使用し、明示的にカラムを指定
+    master_tuples = master_df[required_cols].apply(lambda x: tuple(x.astype(str)), axis=1).tolist()
+    print(f"--- master_tuples (first 5): {master_tuples[:5]} ---") # デバッグ出力
+
     matched_results = []
     
     norm_master = [
         (unicodedata.normalize("NFKC", name).replace(" ", ""), name, pan_box, c4, c5)
         for name, pan_box, c4, c5 in master_tuples
     ]
+    print(f"--- norm_master (first 5): {norm_master[:5]} ---") # デバッグ出力
 
     for pdf_name in pdf_bento_list:
         pdf_name_stripped = pdf_name.strip()
@@ -58,6 +63,7 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
         for norm_m, orig_m, pan_box, c4, c5 in norm_master:
             if norm_m == norm_pdf:
                 best_match = [orig_m, pan_box, c4, c5]
+                print(f"--- Exact match found for {pdf_name_stripped}: {best_match} ---") # デバッグ出力
                 break
         
         # 2. 部分一致で検索
@@ -68,6 +74,7 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
                     candidates.append((orig_m, pan_box, c4, c5))
             if candidates:
                 best_match = max(candidates, key=lambda x: len(x[0]))
+                print(f"--- Partial match found for {pdf_name_stripped}: {best_match} ---") # デバッグ出力
 
         if best_match:
             result_data = best_match
@@ -245,4 +252,3 @@ def extract_bento_range_for_bento(table, start_col):
         cell_text = header_row[col] if col < len(header_row) else ""
         if cell_text and str(cell_text).strip(): bento_list.append(str(cell_text).strip())
     return bento_list
-
