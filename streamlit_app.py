@@ -169,3 +169,10 @@ if uploaded_pdf is not None:
                 )
         except Exception as e:
             st.error(f"Excelファイル生成中にエラーが発生しました: {str(e)}")
+
+if show_debug:
+    st.write("--- master_df の内容 ---")
+    st.dataframe(st.session_state.master_df)
+    st.write("--- df_bento_sheet の内容 (マッチング前) ---")
+    st.dataframe(df_bento_sheet)
+
