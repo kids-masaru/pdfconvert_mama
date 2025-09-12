@@ -8,22 +8,18 @@ import re
 from openpyxl import load_workbook
 import glob
 
-# `match_bento_names` の代わりに、新しい `match_bento_data` をインポート
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
     find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_data, 
-    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe,
-    debug_pdf_content
+    extract_detailed_client_info_from_pdf, export_detailed_client_data_to_dataframe
 )
 
-# ページ設定 (アプリ全体に適用)
 st.set_page_config(
     page_title="PDF変換ツール",
     page_icon="./static/icons/android-chrome-192.png",
     layout="centered",
 )
 
-# --- Session Stateの初期化 ---
 def load_master_data(file_prefix, default_columns):
     list_of_files = glob.glob(os.path.join('.', f'{file_prefix}*.csv'))
     if not list_of_files:
@@ -33,8 +29,7 @@ def load_master_data(file_prefix, default_columns):
     for encoding in encodings:
         try:
             df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna('')
-            if not df.empty: 
-                return df
+            if not df.empty: return df
         except Exception:
             continue
     return pd.DataFrame(columns=default_columns)
@@ -44,8 +39,6 @@ if 'master_df' not in st.session_state:
 if 'customer_master_df' not in st.session_state:
     st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", ['得意先ＣＤ', '得意先名'])
 
-
-# --- UI設定 ---
 st.markdown("""
     <style>
         [data-testid="stSidebarNav"] ul { display: none; }
@@ -64,8 +57,6 @@ st.markdown('<p class="custom-title">数出表 PDF変換ツール</p>', unsafe_a
 show_debug = st.sidebar.checkbox("デバッグ情報を表示", value=False)
 uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf", label_visibility="collapsed")
 
-
-# --- メイン処理 ---
 if uploaded_pdf is not None:
     template_path = "template.xlsm"
     nouhinsyo_path = "nouhinsyo.xlsx"
@@ -94,77 +85,8 @@ if uploaded_pdf is not None:
                     if anchor_col != -1:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
-                            if show_debug:
-                                st.write("#### 📝 PDFから抽出された弁当名リスト")
-                                for i, name in enumerate(bento_list, 1):
-                                    st.write(f"{i}. `{name}`")
-                                st.divider()
-                            
-                            # --- ▼修正点▼ ---
-                            # 強化された `match_bento_data` を呼び出し、整形済みのデータを受け取る
                             matched_data = match_bento_data(bento_list, st.session_state.master_df)
-                            
-                            if show_debug:
-                                st.write("#### 🔄 マッチング結果の詳細")
-                                
-                                # マスタから実際にマッチした行を表示
-                                st.write("**🔎 マッチした行の詳細確認:**")
-                                master_df = st.session_state.master_df
-                                
-                                for i, data in enumerate(matched_data, 1):
-                                    st.write(f"**{i}. {data[0]}**")
-                                    st.write(f"   - パン箱入数: `{data[1]}`")
-                                    st.write(f"   - クラス分け名称4: `{data[2]}`") 
-                                    st.write(f"   - クラス分け名称5: `{data[3]}`")
-                                    
-                                    # この商品がマスタのどの行とマッチしたかを確認
-                                    original_name = bento_list[i-1]  # 元のPDF名
-                                    
-                                    # 実際の列名を使って検索（文字化け対応）
-                                    matched_rows = pd.DataFrame()
-                                    
-                                    # 全ての列で商品名を検索
-                                    for col in master_df.columns:
-                                        if master_df[col].dtype == 'object':  # 文字列列のみ
-                                            temp_matches = master_df[
-                                                master_df[col].astype(str).str.contains(data[0], na=False, regex=False) |
-                                                master_df[col].astype(str).str.contains(original_name, na=False, regex=False)
-                                            ]
-                                            if not temp_matches.empty:
-                                                matched_rows = temp_matches
-                                                break
-                                    
-                                    if not matched_rows.empty:
-                                        st.write(f"   **📋 マッチしたマスタ行（全列表示）:**")
-                                        st.dataframe(matched_rows.head(1))  # 最初の1行のみ
-                                        
-                                        # P列（16列目）とR列（18列目）の値を確認
-                                        if len(master_df.columns) >= 16:
-                                            p_val = matched_rows.iloc[0, 15] if not matched_rows.empty else "なし"
-                                            st.write(f"   **P列（16列目）の値:** `{p_val}`")
-                                            
-                                        if len(master_df.columns) >= 18:
-                                            r_val = matched_rows.iloc[0, 17] if not matched_rows.empty else "なし"
-                                            st.write(f"   **R列（18列目）の値:** `{r_val}`")
-                                    else:
-                                        st.write(f"   ⚠️ マスタで該当行が見つかりません")
-                                        # 部分一致で再検索
-                                        st.write(f"   🔍 部分一致検索中...")
-                                        for col in master_df.columns:
-                                            if master_df[col].dtype == 'object':
-                                                partial_matches = master_df[
-                                                    master_df[col].astype(str).str.contains(original_name[:3] if len(original_name) > 3 else original_name, na=False, regex=False)
-                                                ]
-                                                if not partial_matches.empty:
-                                                    st.write(f"   **部分一致発見 (列: {col}):**")
-                                                    st.dataframe(partial_matches.head(2))
-                                                    break
-                                
-                                st.divider()
-                            
-                            # 受け取ったデータから直接DataFrameを作成するだけのシンプルな処理に
                             df_bento_sheet = pd.DataFrame(matched_data, columns=['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5'])
-                            # --- ▲修正点▲ ---
                             
                             if show_debug:
                                 st.write("--- 抽出・マッチング後の最終データ ---")
@@ -174,7 +96,6 @@ if uploaded_pdf is not None:
                 st.error(f"注文弁当データ処理中にエラーが発生しました: {str(e)}")
                 if show_debug: st.exception(e)
 
-            # クライアント情報の抽出 (変更なし)
             try:
                 client_data = extract_detailed_client_info_from_pdf(io.BytesIO(pdf_bytes_io.getvalue()))
                 if client_data:
@@ -182,7 +103,6 @@ if uploaded_pdf is not None:
             except Exception as e:
                 st.error(f"クライアント情報抽出中にエラーが発生しました: {str(e)}")
     
-    # Excelファイル生成処理 (変更なし)
     if df_paste_sheet is not None:
         try:
             with st.spinner("Excelファイルを作成中..."):
@@ -201,9 +121,9 @@ if uploaded_pdf is not None:
 
                 df_bento_for_nouhin = None
                 if df_bento_sheet is not None:
-                    master_df = st.session_state.master_df
-                    # DataFrameの列名が変更されたため、ここも修正
-                    if '商品名' in master_df.columns:
+                    master_df = st.session_state.master_df.copy()
+                    master_df.columns = master_df.columns.str.strip()
+                    if not master_df.empty and '商品名' in master_df.columns:
                         master_map = master_df.drop_duplicates(subset=['商品予定名']).set_index('商品予定名')['商品名'].to_dict()
                         df_bento_for_nouhin = df_bento_sheet.copy()
                         df_bento_for_nouhin['商品名'] = df_bento_for_nouhin['商品予定名'].map(master_map)
