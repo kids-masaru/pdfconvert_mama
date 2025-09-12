@@ -43,7 +43,7 @@ def load_master_data(file_prefix, default_columns):
     return pd.DataFrame(columns=default_columns)
 
 if "master_df" not in st.session_state:
-    st.session_state.master_df = load_master_data("商品マスタ一覧", ["商品予定名", "パン箱入数", "商品名", "クラス分け名称4", "クラス分け名称5"])
+    st.session_state.master_df = load_master_data("商品マスタ一覧", ["商品予定名", "パン箱入数", "商品名", "売価単価", "弁当区分"])
 if "customer_master_df" not in st.session_state:
     st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", ["得意先ＣＤ", "得意先名"])
 
@@ -103,7 +103,7 @@ if uploaded_pdf is not None:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
                             matched_data = match_bento_data(bento_list, st.session_state.master_df)
-                            df_bento_sheet = pd.DataFrame(matched_data, columns=["商品予定名", "パン箱入数", "クラス分け名称4", "クラス分け名称5"])
+                            df_bento_sheet = pd.DataFrame(matched_data, columns=["商品予定名", "パン箱入数", "売価単価", "弁当区分"])
                             
                             if show_debug:
                                 st.write("--- 抽出・マッチング後の最終データ (df_bento_sheet) ---")
