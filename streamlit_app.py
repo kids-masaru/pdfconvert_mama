@@ -1,4 +1,4 @@
-# streamlit_app.py (最終版)
+# streamlit_app.py
 
 import streamlit as st
 import pandas as pd
@@ -8,7 +8,6 @@ import re
 from openpyxl import load_workbook
 import glob
 
-# 正常な `pdf_utils` から `match_bento_data` をインポート
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
     find_correct_anchor_for_bento, extract_bento_range_for_bento, match_bento_data, 
@@ -22,30 +21,23 @@ st.set_page_config(
 )
 
 def load_master_data(file_prefix, default_columns):
-    """
-    CSVファイルを読み込む。
-    【重要】1行目をヘッダーとして正しく読み込む。
-    """
-    list_of_files = glob.glob(os.path.join(".", f"{file_prefix}*.csv"))
+    list_of_files = glob.glob(os.path.join('.', f'{file_prefix}*.csv'))
     if not list_of_files:
         return pd.DataFrame(columns=default_columns)
     latest_file = max(list_of_files, key=os.path.getmtime)
-    encodings = ["utf-8-sig", "utf-8", "cp932", "shift_jis"]
+    encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
     for encoding in encodings:
         try:
-            # --- ▼修正点：header=Noneを削除し、正しくヘッダーを読み込む ---
-            df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna("")
-            # --- ▲修正点▲ ---
+            df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna('')
             if not df.empty: return df
-        except Exception as e:
-            st.error(f"ファイル {latest_file} の読み込み中にエラーが発生しました (エンコーディング: {encoding}): {e}")
+        except Exception:
             continue
     return pd.DataFrame(columns=default_columns)
 
-if "master_df" not in st.session_state:
-    st.session_state.master_df = load_master_data("商品マスタ一覧", ["商品予定名", "パン箱入数", "商品名", "売価単価", "弁当区分"])
-if "customer_master_df" not in st.session_state:
-    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", ["得意先ＣＤ", "得意先名"])
+if 'master_df' not in st.session_state:
+    st.session_state.master_df = load_master_data("商品マスタ一覧", ['商品予定名', 'パン箱入数', '商品名', '売価単価', '弁当区分'])
+if 'customer_master_df' not in st.session_state:
+    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", ['得意先ＣＤ', '得意先名'])
 
 st.markdown("""
     <style>
@@ -61,31 +53,22 @@ st.markdown("""
 st.sidebar.title("メニュー")
 st.sidebar.page_link("streamlit_app.py", label="PDF Excel 変換", icon="📄")
 st.sidebar.page_link("pages/マスタ設定.py", label="マスタ設定", icon="⚙️")
-st.markdown("<p class=\"custom-title\">数出表 PDF変換ツール</p>", unsafe_allow_html=True)
-show_debug = st.sidebar.checkbox("デバッグ情報を表示", value=True) # デフォルトでTrueに変更
+st.markdown('<p class="custom-title">数出表 PDF変換ツール</p>', unsafe_allow_html=True)
+show_debug = st.sidebar.checkbox("デバッグ情報を表示", value=False)
 uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf", label_visibility="collapsed")
-
-# df_bento_sheet をここで初期化
-df_bento_sheet = None
-
-# デバッグ出力: master_df の内容
-if show_debug:
-    st.write("--- master_df の内容 (streamlit_app.py) ---")
-    st.dataframe(st.session_state.master_df)
-    st.write(f"master_df のカラム: {st.session_state.master_df.columns.tolist()}")
 
 if uploaded_pdf is not None:
     template_path = "template.xlsm"
     nouhinsyo_path = "nouhinsyo.xlsx"
     if not os.path.exists(template_path) or not os.path.exists(nouhinsyo_path):
-        st.error(f"必要なテンプレートファイルが見つかりません：\'{template_path}\' または \'{nouhinsyo_path}\'")
+        st.error(f"必要なテンプレートファイルが見つかりません：'{template_path}' または '{nouhinsyo_path}'")
         st.stop()
     
     template_wb = load_workbook(template_path, keep_vba=True)
     nouhinsyo_wb = load_workbook(nouhinsyo_path)
     pdf_bytes_io = io.BytesIO(uploaded_pdf.getvalue())
     
-    df_paste_sheet, df_client_sheet = None, None
+    df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
     with st.spinner("PDFからデータを抽出中..."):
         try:
             df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
@@ -103,12 +86,14 @@ if uploaded_pdf is not None:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
                             matched_data = match_bento_data(bento_list, st.session_state.master_df)
-                            df_bento_sheet = pd.DataFrame(matched_data, columns=["商品予定名", "パン箱入数", "売価単価", "弁当区分"])
+                            
+                            # --- ▼修正点：最終的なExcelの列名を変更 ---
+                            df_bento_sheet = pd.DataFrame(matched_data, columns=['商品予定名', 'パン箱入数', '売価単価', '弁当区分'])
+                            # --- ▲修正点▲ ---
                             
                             if show_debug:
-                                st.write("--- 抽出・マッチング後の最終データ (df_bento_sheet) ---")
+                                st.write("--- 抽出・マッチング後の最終データ ---")
                                 st.dataframe(df_bento_sheet)
-                                st.write(f"df_bento_sheet のカラム: {df_bento_sheet.columns.tolist()}")
 
             except Exception as e:
                 st.error(f"注文弁当データ処理中にエラーが発生しました: {str(e)}")
@@ -141,11 +126,11 @@ if uploaded_pdf is not None:
                 if df_bento_sheet is not None:
                     master_df = st.session_state.master_df.copy()
                     master_df.columns = master_df.columns.str.strip()
-                    if not master_df.empty and "商品名" in master_df.columns:
-                        master_map = master_df.drop_duplicates(subset=["商品予定名"]).set_index("商品予定名")["商品名"].to_dict()
+                    if not master_df.empty and '商品名' in master_df.columns:
+                        master_map = master_df.drop_duplicates(subset=['商品予定名']).set_index('商品予定名')['商品名'].to_dict()
                         df_bento_for_nouhin = df_bento_sheet.copy()
-                        df_bento_for_nouhin["商品名"] = df_bento_for_nouhin["商品予定名"].map(master_map)
-                        df_bento_for_nouhin = df_bento_for_nouhin[["商品予定名", "パン箱入数", "商品名"]]
+                        df_bento_for_nouhin['商品名'] = df_bento_for_nouhin['商品予定名'].map(master_map)
+                        df_bento_for_nouhin = df_bento_for_nouhin[['商品予定名', 'パン箱入数', '商品名']]
                 
                 ws_paste_n = nouhinsyo_wb["貼り付け用"]
                 for r_idx, row in df_paste_sheet.iterrows():
@@ -180,12 +165,3 @@ if uploaded_pdf is not None:
                 )
         except Exception as e:
             st.error(f"Excelファイル生成中にエラーが発生しました: {str(e)}")
-
-# デバッグ出力: df_bento_sheet の内容 (マッチング前) は、df_bento_sheet がNoneの場合があるので、条件付きで表示
-if show_debug and df_bento_sheet is None:
-    st.write("--- df_bento_sheet の内容 (マッチング前) ---")
-    st.write("df_bento_sheet はまだ生成されていません。")
-elif show_debug and df_bento_sheet is not None:
-    st.write("--- df_bento_sheet の内容 (マッチング後) ---")
-    st.dataframe(df_bento_sheet)
-    st.write(f"df_bento_sheet のカラム: {df_bento_sheet.columns.tolist()}")
