@@ -34,7 +34,7 @@ def load_master_data(file_prefix, default_columns):
     for encoding in encodings:
         try:
             # --- ▼修正点：header=Noneを削除し、正しくヘッダーを読み込む ---
-            df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna('')
+            df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna(\'\')
             # --- ▲修正点▲ ---
             if not df.empty: return df
         except Exception:
