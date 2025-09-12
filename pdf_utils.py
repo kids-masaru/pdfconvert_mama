@@ -254,4 +254,3 @@ def extract_bento_range_for_bento(table, start_col):
         cell_text = header_row[col] if col < len(header_row) else ""
         if cell_text and str(cell_text).strip(): bento_list.append(str(cell_text).strip())
     return bento_list
-
