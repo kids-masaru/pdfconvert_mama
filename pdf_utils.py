@@ -42,7 +42,9 @@ def match_bento_data(pdf_bento_list: List[str], master_df: pd.DataFrame) -> List
     
     # 必要な列のデータを安全に抽出
     # 修正箇所: to_recordsの代わりにapplyとtupleを使用し、明示的にカラムを指定
-    master_tuples = master_df[required_cols].apply(lambda x: tuple(x.astype(str)), axis=1).tolist()
+    master_tuples = []
+    for row in master_df[required_cols].itertuples(index=False):
+        master_tuples.append(tuple(map(str, row)))
     print(f"--- master_tuples (first 5): {master_tuples[:5]} ---") # デバッグ出力
 
     matched_results = []
@@ -252,3 +254,4 @@ def extract_bento_range_for_bento(table, start_col):
         cell_text = header_row[col] if col < len(header_row) else ""
         if cell_text and str(cell_text).strip(): bento_list.append(str(cell_text).strip())
     return bento_list
+
