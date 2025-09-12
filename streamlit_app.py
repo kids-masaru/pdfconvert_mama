@@ -61,9 +61,12 @@ st.markdown("""
 st.sidebar.title("メニュー")
 st.sidebar.page_link("streamlit_app.py", label="PDF Excel 変換", icon="📄")
 st.sidebar.page_link("pages/マスタ設定.py", label="マスタ設定", icon="⚙️")
-st.markdown('<p class="custom-title">数出表 PDF変換ツール</p>', unsafe_allow_html=True)
+st.markdown("<p class=\"custom-title\">数出表 PDF変換ツール</p>", unsafe_allow_html=True)
 show_debug = st.sidebar.checkbox("デバッグ情報を表示", value=True) # デフォルトでTrueに変更
 uploaded_pdf = st.file_uploader("処理するPDFファイルをアップロードしてください", type="pdf", label_visibility="collapsed")
+
+# df_bento_sheet をここで初期化
+df_bento_sheet = None
 
 # デバッグ出力: master_df の内容
 if show_debug:
@@ -75,14 +78,14 @@ if uploaded_pdf is not None:
     template_path = "template.xlsm"
     nouhinsyo_path = "nouhinsyo.xlsx"
     if not os.path.exists(template_path) or not os.path.exists(nouhinsyo_path):
-        st.error(f"必要なテンプレートファイルが見つかりません：'{template_path}' または '{nouhinsyo_path}'")
+        st.error(f"必要なテンプレートファイルが見つかりません：\'{template_path}\' または \'{nouhinsyo_path}\'")
         st.stop()
     
     template_wb = load_workbook(template_path, keep_vba=True)
     nouhinsyo_wb = load_workbook(nouhinsyo_path)
     pdf_bytes_io = io.BytesIO(uploaded_pdf.getvalue())
     
-    df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
+    df_paste_sheet, df_client_sheet = None, None
     with st.spinner("PDFからデータを抽出中..."):
         try:
             df_paste_sheet = pdf_to_excel_data_for_paste_sheet(io.BytesIO(pdf_bytes_io.getvalue()))
