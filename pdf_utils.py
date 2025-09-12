@@ -239,3 +239,10 @@ def extract_bento_range_for_bento(table, start_col):
         cell_text = header_row[col] if col < len(header_row) else ""
         if cell_text and str(cell_text).strip(): bento_list.append(str(cell_text).strip())
     return bento_list
+
+    if master_df is not None and not master_df.empty:
+        print("--- master_df columns in match_bento_data ---")
+        print(master_df.columns)
+
+    # ... (rest of the function)
+
