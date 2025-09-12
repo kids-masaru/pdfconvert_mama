@@ -1,4 +1,4 @@
-# streamlit_app.py
+# streamlit_app.py (最終版)
 
 import streamlit as st
 import pandas as pd
@@ -28,16 +28,17 @@ def load_master_data(file_prefix, default_columns):
     encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
     for encoding in encodings:
         try:
-            df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna('')
+            # header=None を指定して、CSVの1行目をデータとして読み込む
+            df = pd.read_csv(latest_file, encoding=encoding, dtype=str, header=None).fillna('')
             if not df.empty: return df
         except Exception:
             continue
     return pd.DataFrame(columns=default_columns)
 
 if 'master_df' not in st.session_state:
-    st.session_state.master_df = load_master_data("商品マスタ一覧", ['商品予定名', 'パン箱入数', '商品名', 'クラス分け名称4', 'クラス分け名称5'])
+    st.session_state.master_df = load_master_data("商品マスタ一覧", [])
 if 'customer_master_df' not in st.session_state:
-    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", ['得意先ＣＤ', '得意先名'])
+    st.session_state.customer_master_df = load_master_data("得意先マスタ一覧", [])
 
 st.markdown("""
     <style>
@@ -85,7 +86,10 @@ if uploaded_pdf is not None:
                     if anchor_col != -1:
                         bento_list = extract_bento_range_for_bento(main_table, anchor_col)
                         if bento_list:
+                            # 確実なデータ取得を行う `match_bento_data` を呼び出す
                             matched_data = match_bento_data(bento_list, st.session_state.master_df)
+                            
+                            # 返ってきたデータからDataFrameを作成
                             df_bento_sheet = pd.DataFrame(matched_data, columns=['商品予定名', 'パン箱入数', 'クラス分け名称4', 'クラス分け名称5'])
                             
                             if show_debug:
@@ -120,15 +124,19 @@ if uploaded_pdf is not None:
                 macro_excel_bytes = output_macro.getvalue()
 
                 df_bento_for_nouhin = None
-                if df_bento_sheet is not None:
-                    master_df = st.session_state.master_df.copy()
-                    master_df.columns = master_df.columns.str.strip()
-                    if not master_df.empty and '商品名' in master_df.columns:
-                        master_map = master_df.drop_duplicates(subset=['商品予定名']).set_index('商品予定名')['商品名'].to_dict()
+                if df_bento_sheet is not None and not st.session_state.master_df.empty:
+                    master_df_for_nouhin = st.session_state.master_df.copy()
+                    # ヘッダー行をCSVの1行目として再設定
+                    master_df_for_nouhin.columns = master_df_for_nouhin.iloc[0]
+                    master_df_for_nouhin = master_df_for_nouhin[1:]
+                    master_df_for_nouhin.columns = master_df_for_nouhin.columns.str.strip()
+
+                    if '商品名' in master_df_for_nouhin.columns:
+                        master_map = master_df_for_nouhin.drop_duplicates(subset=['商品予定名']).set_index('商品予定名')['商品名'].to_dict()
                         df_bento_for_nouhin = df_bento_sheet.copy()
                         df_bento_for_nouhin['商品名'] = df_bento_for_nouhin['商品予定名'].map(master_map)
                         df_bento_for_nouhin = df_bento_for_nouhin[['商品予定名', 'パン箱入数', '商品名']]
-                
+
                 ws_paste_n = nouhinsyo_wb["貼り付け用"]
                 for r_idx, row in df_paste_sheet.iterrows():
                     for c_idx, value in enumerate(row):
@@ -138,7 +146,10 @@ if uploaded_pdf is not None:
                 if df_client_sheet is not None:
                     safe_write_df(nouhinsyo_wb["クライアント抽出"], df_client_sheet, start_row=1)
                 if not st.session_state.customer_master_df.empty:
-                    safe_write_df(nouhinsyo_wb["得意先マスタ"], st.session_state.customer_master_df, start_row=1)
+                    customer_df_for_nouhin = st.session_state.customer_master_df.copy()
+                    customer_df_for_nouhin.columns = customer_df_for_nouhin.iloc[0]
+                    customer_df_for_nouhin = customer_df_for_nouhin[1:]
+                    safe_write_df(nouhinsyo_wb["得意先マスタ"], customer_df_for_nouhin, start_row=1)
                 
                 output_data_only = io.BytesIO()
                 nouhinsyo_wb.save(output_data_only)
