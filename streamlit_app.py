@@ -32,6 +32,30 @@ def load_master_data(file_prefix, default_columns):
             continue
     return pd.DataFrame(columns=default_columns)
 
+ = glob.glob(os.path.join('.', f'{file_pattern}*.xlsx'))
+    if not list_of_files:
+        return pd.DataFrame(columns=default_columns)
+    latest_file = max(list_of_files, key=os.path.getmtime)
+    try:
+        df = pd.read_excel(latest_file, dtype=str).fillna('')
+        if not df.empty:
+            df.columns = df.columns.str.strip()
+            return df
+    except Exception as e:
+        st.warning(f"Excelファイル読み込みエラー: {str(e)}")
+    return pd.DataFrame(columns=default_columns)
+
+def paste_dataframe_to_sheet(ws, df, start_row=1, start_col=1):
+    """DataFrameをExcelシートに貼り付ける"""
+    # ヘッダーを貼り付け
+    for c_idx, col_name in enumerate(df.columns, start=start_col):
+        ws.cell(row=start_row, column=c_idx, value=col_name)
+    
+    # データを貼り付け
+    for r_idx, row in df.iterrows():
+        for c_idx, value in enumerate(row, start=start_col):
+            ws.cell(row=start_row + r_idx + 1, column=c_idx, value=value)
+
 if 'master_df' not in st.session_state:
     st.session_state.master_df = load_master_data("商品マスタ一覧", ['商品予定名', 'パン箱入数', '商品名', '売価単価', '弁当区分'])
 if 'customer_master_df' not in st.session_state:
@@ -65,6 +89,37 @@ if uploaded_pdf is not None:
     template_wb = load_workbook(template_path, keep_vba=True)
     nouhinsyo_wb = load_workbook(nouhinsyo_path)
     pdf_bytes_io = io.BytesIO(uploaded_pdf.getvalue())
+    
+    # CSVから商品マスタと得意先マスタを読み込み、templateに貼り付け
+    try:
+        df_product_master = load_master_csv("商品マスタ")
+        if not df_product_master.empty and "商品マスタ" in template_wb.sheetnames:
+            ws_product = template_wb["商品マスタ"]
+            # 既存データを削除
+            for row in ws_product.iter_rows():
+                for cell in row:
+                    cell.value = None
+            paste_dataframe_to_sheet(ws_product, df_product_master)
+            if show_debug:
+                st.write("✅ 商品マスタを template.xlsm に貼り付けました")
+    except Exception as e:
+        if show_debug:
+            st.warning(f"商品マスタの貼り付けエラー: {str(e)}")
+    
+    try:
+        df_customer_master = load_master_csv("得意先マスタ")
+        if not df_customer_master.empty and "得意先マスタ" in template_wb.sheetnames:
+            ws_customer = template_wb["得意先マスタ"]
+            # 既存データを削除
+            for row in ws_customer.iter_rows():
+                for cell in row:
+                    cell.value = None
+            paste_dataframe_to_sheet(ws_customer, df_customer_master)
+            if show_debug:
+                st.write("✅ 得意先マスタを template.xlsm に貼り付けました")
+    except Exception as e:
+        if show_debug:
+            st.warning(f"得意先マスタの貼り付けエラー: {str(e)}")
     
     df_paste_sheet, df_bento_sheet, df_client_sheet = None, None, None
     with st.spinner("PDFからデータを抽出中..."):
