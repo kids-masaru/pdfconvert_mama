@@ -32,18 +32,22 @@ def load_master_data(file_prefix, default_columns):
             continue
     return pd.DataFrame(columns=default_columns)
 
- = glob.glob(os.path.join('.', f'{file_pattern}*.xlsx'))
+def load_master_csv(file_pattern):
+    """同じフォルダにあるCSVファイルからマスタデータを読み込む"""
+    list_of_files = glob.glob(os.path.join('.', f'*{file_pattern}*.csv'))
     if not list_of_files:
-        return pd.DataFrame(columns=default_columns)
+        return pd.DataFrame()
     latest_file = max(list_of_files, key=os.path.getmtime)
-    try:
-        df = pd.read_excel(latest_file, dtype=str).fillna('')
-        if not df.empty:
-            df.columns = df.columns.str.strip()
-            return df
-    except Exception as e:
-        st.warning(f"Excelファイル読み込みエラー: {str(e)}")
-    return pd.DataFrame(columns=default_columns)
+    encodings = ['utf-8-sig', 'utf-8', 'cp932', 'shift_jis']
+    for encoding in encodings:
+        try:
+            df = pd.read_csv(latest_file, encoding=encoding, dtype=str).fillna('')
+            if not df.empty:
+                df.columns = df.columns.str.strip()
+                return df
+        except Exception:
+            continue
+    return pd.DataFrame()
 
 def paste_dataframe_to_sheet(ws, df, start_row=1, start_col=1):
     """DataFrameをExcelシートに貼り付ける"""
