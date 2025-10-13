@@ -5,7 +5,6 @@ import os
 import re
 from openpyxl import load_workbook
 import glob
-from tkinter import Tk, filedialog
 
 from pdf_utils import (
     safe_write_df, pdf_to_excel_data_for_paste_sheet, extract_table_from_pdf_for_bento,
@@ -32,24 +31,6 @@ def load_master_data(file_prefix, default_columns):
         except Exception:
             continue
     return pd.DataFrame(columns=default_columns)
-
-def select_save_folder():
-    """保存先フォルダを選択するダイアログを表示"""
-    root = Tk()
-    root.withdraw()  # ウィンドウを非表示
-    folder_path = filedialog.askdirectory(title="保存先フォルダを選択してください")
-    root.destroy()
-    return folder_path
-
-def save_file(file_bytes, file_name):
-    """ファイルを選択したフォルダに保存"""
-    folder_path = select_save_folder()
-    if folder_path:
-        full_path = os.path.join(folder_path, file_name)
-        with open(full_path, 'wb') as f:
-            f.write(file_bytes)
-        return True, full_path
-    return False, None
 
 if 'master_df' not in st.session_state:
     st.session_state.master_df = load_master_data("商品マスタ一覧", ['商品予定名', 'パン箱入数', '商品名', '売価単価', '弁当区分'])
@@ -167,20 +148,16 @@ if uploaded_pdf is not None:
             
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("▼　数出表を保存"):
-                    success, path = save_file(macro_excel_bytes, f"{original_pdf_name}_数出表.xlsm")
-                    if success:
-                        st.success(f"✅ ファイルを保存しました：{path}")
-                    else:
-                        st.warning("⚠️ ファイル保存がキャンセルされました")
-            
+                st.download_button(
+                    label="▼　数出表ダウンロード", data=macro_excel_bytes,
+                    file_name=f"{original_pdf_name}_数出表.xlsm",
+                    mime="application/vnd.ms-excel.sheet.macroEnabled.12"
+                )
             with col2:
-                if st.button("▼　納品書を保存"):
-                    success, path = save_file(data_only_excel_bytes, f"{original_pdf_name}_納品書.xlsx")
-                    if success:
-                        st.success(f"✅ ファイルを保存しました：{path}")
-                    else:
-                        st.warning("⚠️ ファイル保存がキャンセルされました")
-        
+                st.download_button(
+                    label="▼　納品書ダウンロード", data=data_only_excel_bytes,
+                    file_name=f"{original_pdf_name}_納品書.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
         except Exception as e:
             st.error(f"Excelファイル生成中にエラーが発生しました: {str(e)}")
