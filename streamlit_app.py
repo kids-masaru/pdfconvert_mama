@@ -1,9 +1,4 @@
-Dim coloringEnabled As Boolean
-
-Private Sub Worksheet_Change(ByVal Target As Range)
-    If Not coloringEnabled Then Exit Sub
-    
-    Dim ws As Worksheet
+Dim ws As Worksheet
     Dim editRow As Long
     Dim aoColumn As Long
     Dim cellAddress As String
