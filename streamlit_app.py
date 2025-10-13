@@ -1,9 +1,9 @@
 Dim ws As Worksheet
-    Dim editRow As Long
-    Dim aoColumn As Long
-    Dim cellAddress As String
-    Dim lastRow As Long
-    Dim nextRow As Long
+Dim editRow As Long
+Dim aoColumn As Long
+Dim cellAddress As String
+Dim lastRow As Long
+Dim nextRow As Long
     
     Set ws = ActiveSheet
     aoColumn = ws.Range("AO1").Column
